@@ -1,0 +1,258 @@
+README.OBD2
+-----------
+ 
+  * OBD2 basics
+    *  What is OBD2?
+    *  What is the purpose of an OBD2 scan tool?
+    *  What are other uses of the OBD2 interface?
+    *  How does one connect to the OBD2 system in a vehicle?
+  * Engine basics
+    *  What is Electronic Fuel Injection (EFI)?
+    *  What kind of emmissions control systems are present in vehicles?
+      *  Catalyst (Catalytic Coverter) / Heated
+      *  Evaporative (Evap) System
+      *  Secondary Air
+      *  A/C Refrigerant
+      *  Oxygen Sensor / Heated
+      *  Exhaust Gas Recirculation (EGR) system
+  *  OBD2 details
+    *  How does OBD2 work?
+    *  What are the PIDs used with OBD2?
+    *  What do I do with a Diagnostic Trouble Code (DTC)?
+    *  What are OBD2 monitors?
+
+
+
+OBD2 basics
+-----------
+
+*  What is OBD2?
+
+On-Board Diagnostics, second generation.  
+
+The OBD2 standard is a legal requirement for all cars sold in the US since 
+1996.  The standard is primarily a means for monitoring and reducing vehicle 
+emmissions, but is also useful for interacting with the engine computers in
+modern vehicles.
+
+    http://en.wikipedia.org/wiki/On-board_diagnostics#OBD-II
+
+
+*  What is the purpose of an OBD2 scan tool?
+
+At it's simplest, an OBD2 scan tool is used to "pull the codes" from a car 
+that has a "Check Engine" light turned on.   These codes tell you what's 
+wrong with the car so you can correct it. 
+
+Additionally, state-mandated emmissions inspections use an OBD2 scan tool
+to retrieve the status of several emmissions monitors.  
+
+
+*  What are other uses of the OBD2 interface?
+
+Manufacturers and repair shops also use the same OBD2 interface to 
+connect their advanced diagnostic equipment.  Though only the standard
+OBD2 command and response functions are mandated to be present, 
+manufacturers typically also make the core vehicle sensor network
+accessible through the same connector.  
+
+Also, OBD2 dataloggers that record sensor info can be used for:
+  - driving habits analysis/monitoring
+  - correlation with GPS info
+  - engine tuning
+  - virtual dashboard 
+
+
+*  How does one connect to the OBD2 system in a vehicle?
+
+There is a standard connector located under the console near the driver.  An 
+OBD2 reader device hooks up to this port and converts the vehicle network to
+either RS-232, USB, or bluetooth.  Information is gathered by sending short 
+commands and receiving back the corresponding information.  
+
+
+
+Engine basics
+-------------
+
+*  What is Electronic Fuel Injection (EFI)?
+
+An engine needs fuel to run.  Old vehicles used a carburetor to add fuel to 
+the air entering the engine.  Instead of a carburetor, modern vehicles use 
+Fuel Injectors, controlled by a computer.  The computer uses several sensors 
+throughout the vehicle to determine the proper amount of fuel to inject.  
+
+  Primer on EFI Theory:
+    http://www.sdsefi.com/techtheo.htm
+
+  More EFI info, by a rally driver:
+    http://www.innovatemotorsports.com/resources/ecu-basics.php
+
+  Lots of EFI related info:
+    http://autoshop101.com/  
+
+The OBD2 standard requires the engine computer to monitor the status of 
+emmission control subsystems and report when they fail.
+
+
+*  What kind of emmissions control systems are present in vehicles?
+
+  *  Catalyst (Catalytic Coverter) / Heated
+
+Many byproducts of combustion can be eliminated by passing the exhaust stream 
+across a surface covered with catalysts that help convert harmful emmissions 
+into less harmful emmissions.  Most catalysts work at specfic temperatures. 
+Unheated catalysts can work poorly or not at all.  The exhaust is hot enough 
+to heat up the catalytic converter, but some may have an electric heating 
+element to help it heat up faster after a cold start. 
+
+
+  *  Evaporative (Evap) System
+
+Evaporated fuel is a major source of emmissions.  Modern vehicles have a
+sealed and pressurized fuel tank with a charcoal canister that collects 
+evaporated fuel and later "purges" it back to the fuel system.  Additionally, 
+a Positive Crankcase Ventilation (PCV) subsystem can recover fuel vapors that 
+slip past the piston rings into the crankcase. 
+
+
+  *  Secondary Air
+
+Primary Air would be the air used in combustion in the engine.  Secondary Air 
+is the injection of additional air into the exhaust to help combust any fuel
+that remains in the exhaust.  It can be injected upstream or downstream of the
+catalytic converter.  The secondary air injector is sometimes called a smog 
+pump.  This is an old technique for emmissions control and is not common on
+new vehicles.
+
+
+  *  A/C Refrigerant
+
+The R-12 refrigerant formerly used by air conditioning systems readily
+evaporates and is a harmful emmission.  Modern vehicles don't use R-12.
+Vehicles that did needed to closely monitor the A/C system for leaks.
+
+
+  *  Oxygen Sensor / Heated
+
+Oxygen (O2) sensors measure the oxygen content of the exhaust.  Sensors could 
+be located upstream and/or downstream of the catalytic converter.  Information
+from the O2 sensors is used by the engine computer to detemine how completely 
+the injected fuel burned.  Oxygen sensors typically work best at a particular 
+temperature so some have an integrated heating element.
+
+
+  *  Exhaust Gas Recirculation (EGR) system
+
+At high combustion temperatures, nitrogen from the atmosphere is reactive and 
+forms nasty emmissions.  Gasoline burns hotter in the presense of excess 
+oxygen.  This is called a "lean" fuel-to-air ratio.  Excess fuel is considered 
+"rich."  A rich fuel-air mix wastes fuel and a lean mix creates toxic 
+emmissions.  To reduce toxic emmssions without wasting fuel, another solution 
+is needed.  The solution is to reduce the oxygen in the mix by injecting  
+exhaust into the intake air stream.  Since the exhaust has much less oxygen in
+it, this lowers the combustion temperature.
+
+Follow this link for an expert explaination.
+  http://forum.mazda6club.com/mazdaspeed6/226935-egr-systems-information.html
+
+
+
+OBD2 details
+------------
+
+*  What is the physical connector for OBD2?
+
+   SAE J1962 16-pin connector
+
+   http://pinouts.ru/connector/16_pin_car_J1962_OBD_2_special_connector.shtml
+
+   http://en.wikipedia.org/wiki/On-board_diagnostics#OBD-II_Diagnostic_connector
+
+
+
+*  How does OBD2 work?
+
+Modes & codes.
+
+OBD2 has 2 kinds of codes, PIDs and DTCs
+  * PIDs are "Parameter IDs", which is just a fancy name for command or query.
+       The scan tool sends a PID (eg. "0115") to the vehicle and a string of hex encoded bytes is returned
+       Many PIDs correspond to a particular sensor in the vehicle.
+       Each PID has different rules for interpreting the reply.   
+  * DTCs are "Diagnostic Trouble Codes".  
+       When the vehicle senses an error condition it will "set" a DTC, and possibly light up the "Check Engine" light.
+       Scanning for set DTCs gives a vehicle troubleshooter or inspector precise information about problems.
+       SAE J2012 
+
+
+*  What are the PIDs used with OBD2?
+
+PIDs are grouped into "modes."  For example, PID "0115" means something like mode "01", parameter "15". 
+
+SAE J1979 describes ten "modes" of operation for OBD-II.  
+
+  Mode
+   ID
+ (hex)  Mode description
+ -----  -----------------------
+   01   Show current data
+   02   Show freeze frame data
+   03   Show stored Diagnostic Trouble Codes
+   04   Clear Diagnostic Trouble Codes and stored values
+   05   Test results, oxygen sensor monitoring (non CAN only)
+   06   Test results, other component/system monitoring (Test results, oxygen sensor monitoring for CAN only)
+   07   Show pending Diagnostic Trouble Codes (detected during current or last driving cycle)
+   08   Control operation of on-board component/system
+   09   Request vehicle information
+   0A   Permanent DTC's (Cleared DTC's)
+
+Additional modes are defined by manufacturers.  
+
+Within each mode, different vehicles support different sets of PIDs.  Only a 
+small number of PIDs are required to be functional on all vehicles.
+
+  Lots of detail:
+    http://en.wikipedia.org/wiki/OBD-II_PIDs
+
+
+*  What do I do with a Diagnostic Trouble Code (DTC)?
+
+DTC code descriptions are short and cryptic, particularly if one is 
+unfamiliar with the many emmissions control systems in a modern vehicle. 
+Fortunately, several websites much more information about DTCs:
+  - http://www.obd-codes.com/
+  - http://engine-codes.com/
+  - http://www.kbmsystems.net/obd_fault_codes_db.asp
+
+
+* What are OBD2 monitors?
+
+To facilitate the emmissions inspection process, the OBD2 standard defines 
+continuous and non-continuous monitors that an engine computer must use to 
+monitor the status of the emmission control systems present in a vehicle. 
+
+Continuous monitors
+
+  - Misfire
+  - Fuel system
+  - Components
+
+Non-continuous monitors (spark ignition vehicles)
+
+  - Catalyst 
+  - Heated Catalyst
+  - Evaporative System
+  - Secondary Air System
+  - A/C Refrigerant
+  - Oxygen Sensor
+  - Heated Oxygen Sensor
+  - EGR System
+
+More info:
+    http://www.deq.state.va.us/mobile/mobobdm.html
+
+
+
+
+
