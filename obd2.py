@@ -66,8 +66,8 @@ DTCs = {}
 
 
 # DTCs since last time DTCs were cleared
-GET_UNCLEARED_DTCs = "03"
-CLEAR_DTCs         = "04"
+GET_PERM_DTCs      = "03"
+CLEAR_PERM_DTCs    = "04"
 # DTCs from curent drive cycle:
 GET_CYCLE_DTCs     = "07"
 # DTCs that have been cleared
@@ -83,7 +83,7 @@ supported_PIDs  = ["0100", "0101", "0104", "0105", "010C", "010D", "0111",
 #                0202, 0204, 0205, 020C, 020D, 0211 
 # 
 # 0104/0204 - Calculated engine load value (%)
-# 0105/0205 - Engine coolant temperature (°C)
+# 0105/0205 - Engine coolant temperature (deg C)
 # 010C/020C - Engine speed (rpm) 
 # 010D/020D - Vehicle speed (km/h)
 # 0111/0211 - Throttle position (%)
@@ -92,22 +92,31 @@ feature_PIDs    = ["0100", "0120", "0140", "0160", "0180", "01A0", "01C0", "01E0
                    "0200", "0220", "0240", "0260", "0280", "02A0", "02C0", "02E0",
                    "0600", "0620", "0640", "0660", "0680", "06A0", "06C0", "06E0",
                    "0900" ]
-diagnostic_PIDs = ["0101", "0102", "0130", "0131", "014E", "0121", "014D", "0141"]
+
+#
+# Emmissions Inspection and Diagnostics
+#
 
 # 01 01 - Monitor status since DTCs cleared & MIL status & DTC count
 #
 # If all monitors are "complete" and there are no DTCs and no MIL, 
 #    then we pass inspection.
+
+# Misc. PIDs related to emmissions monitors & DTCs
+misc_diag_PIDs = [ "0130", "0131", "014E", "0121", "014D"]
 #
 # 01 30 - # of warm-ups since codes cleared
 # 01 31 - Distance traveled since codes cleared (km)
 # 01 4E - Time since trouble codes cleared (minutes)
-#
 # 01 21 - Distance traveled with MIL on (km)
 # 01 4D - Time run with MIL on (minutes)
-#
+
+
+
 # 01 41 - Monitor status this drive cycle
 
+# 02 02 - DTC that set freeze frame
+#
 
 
 OBD_standards = {
@@ -286,8 +295,8 @@ def decode_text( data ) :
     """ Decode ASCII text encoded in hex"""
     TXT = ''
     for d in data:
+         # check that result is actually ascii
          TXT += binascii.unhexlify(d)
-
     return TXT
 
 
@@ -297,7 +306,6 @@ def decode_ints( data ) :
     for d in data:
          INTs += str(int(d, 16)).rjust(3,' ')
          INTs += ' '
-
     return INTs
 
 
@@ -308,19 +316,16 @@ def decode_hex( data ) :
     for d in data:
          HEXs += d.rjust(3,' ')
          HEXs += ' '
-
     return HEXs
 
 
 # used by monitor decode and O2 sensor bitmap decode
 def hexbytes_to_bitarrays( data ) :
     """ Convert list of hex bytes to a list of bitstrings """
-    values = []
-    #data = result[0][2:]
+    bitstrs = []
     for b in data:
-        values.append(hex_to_bitstring(b))
-    return values
-    # this does not match the [ desc, value, unit ] style of "values",  but it works..
+        bitstrs.append(hex_to_bitstring(b))
+    return bitstrs
 
 
 #
@@ -357,12 +362,18 @@ def decode_monitors( P, data ) :
 
     # PID 0101 has MIL & DTC count, 0141 does not
     if P == '01':
+        # debug
+        print "Monitor status OVERALL"
         MIL = "Off"
         if A[7] == '1':
             MIL = "ON"
         values.append( ["MIL", MIL, ""] )
         DTC_CNT = int(data[0], 16) & int(0x7F)
         values.append( ["DTC count", DTC_CNT, ""] )
+    else:
+        # debug
+        print "Monitor status THIS DRIVE CYCLE"
+
 
     ign = int(B[3])
     values.append( [ "Ignition Type", ign, ignition_type[ign] ] )
@@ -370,33 +381,29 @@ def decode_monitors( P, data ) :
     # TODO: these should just skip unsupported sensors, duh.
     #   and doneness should be the 2nd field in the 3 tuple
     for i in [0, 1, 2]:
-        state = "UNSUPPORTED"
-        done = "INCOMPLETE"
+        done = "NOT READY FOR INSPECTION"
         if B[i] == '1':
-            state = "SUPPORTED"
             if B[i+4] == '0':
-                done = "READY"
-            values.append( [continuous_monitors[i], state, done] )
+                done = "OK"
+            values.append( ['MONITOR', continuous_monitors[i], done] )
 
+    # C lists supported monitors (1 = SUPPORTED)
+    # D lists their readiness (0 = READY)
     if ign == 0 :
         for i in [0, 1, 2, 3, 4, 5, 6, 7]:
-            state = "UNSUPPORTED"
-            done = "INCOMPLETE"
+            done = "NOT READY FOR INSPECTION"
             if C[i] == '1':
-                state = "SUPPORTED"
                 if D[i] == '0':
-                    done = "READY"
-                values.append( [non_continuous_monitors[0][i], state, done] )
+                    done = "OK"
+                values.append( ['MONITOR', non_continuous_monitors[0][i], done] )
 
     if ign == 1 :
         for i in [0, 1, 3, 5, 6, 7]:
-            state = "UNSUPPORTED"
-            done = "INCOMPLETE"
+            done = "NOT READY FOR INSPECTION"
             if C[i] == '1':
-                state = "SUPPORTED"
                 if D[i] == '0':
-                    done = "READY"
-                values.append( [non_continuous_monitors[1][i], state, done] )
+                    done = "OK"
+                values.append( ['MONITOR', non_continuous_monitors[1][i], done] )
 
 
     return values
@@ -597,9 +604,12 @@ def decode_data_by_mode(mode, pid, count, data):
         PID = '06' + str.upper(P).rjust(2,'0')
         print " DONT KNOW how to interpret mode 06"
         print "  PID:", PID
+        # same as hex
+        #print "  Raw:", data
         print "  Hex:", decode_hex(data)
         print " Ints:", decode_ints(data)
-        print " Text:", decode_text(data)
+        # text needs to be filtered
+        #print " Text:", decode_text(data)
         return []
 
     elif M == '07' :
@@ -622,7 +632,7 @@ def decode_data_by_mode(mode, pid, count, data):
 
     if PID not in PIDs :
         print "Unknown PID, data: ", PID, data
-        values.append( ["Unknown", PID, ""] )
+        values.append( ["Unknown", decode_hex(data), ""] )
         return values
 
     elif PID in feature_PIDs : 
@@ -671,9 +681,14 @@ def decode_data_by_mode(mode, pid, count, data):
         values.append( ["Fuel type", A, fuel_types[A]] )
         return values
 
-    #elif PID == '0902' or PID == '0904':
-    elif M == '09':
+    #elif M == '09':
+    elif PID == '0902' or PID == '0904':
         values.append( [ PIDs[PID][1][0][0], decode_text( data ), "" ] )
+        return values
+
+    # not sure about these...
+    elif PID == '0906' or PID == '0908':
+        values.append( [ PIDs[PID][1][0][0], decode_hex( data ), "" ] )
         return values
 
     # insert new elif sections here
@@ -683,7 +698,7 @@ def decode_data_by_mode(mode, pid, count, data):
  
         if len(data) < databytes :
             #print "expecting:", databytes, "bytes, received:", len(result[0])-2, "bytes"
-            values.append( [ PID, "ERROR", "expected more databytes" ] )
+            values.append( [ "ERROR", 1,  "expected more databytes" ] )
             return values
 
         # assign A, B, C, D, ...
@@ -759,11 +774,11 @@ class OBD2:
         self.MIL      = "Unknown"
         # list of DTCs
         self.DTCcount = "Unknown"
-        self.currDTCs = ()
-        # monitor info
-        self.monitors  = {}
-        # Dict of info related to DTCs, # warmups & distance & time since codes cleared, distance & time run with MIL
-        self.DTCinfo  = {}
+        #self.currDTCs = ()
+        ## monitor info
+        #self.monitors  = {}
+        ## Dict of info related to DTCs, # warmups & distance & time since codes cleared, distance & time run with MIL
+        #self.DTCinfo  = {}
 
 
     def scan_features(self):
@@ -773,36 +788,38 @@ class OBD2:
             if fpid in self.suppPIDs:
                 feature_bits = self.interpret_features(fpid)
                 # debug
-                print feature_bits, ""
+                print fpid.rjust(8), ": ", feature_bits, ""
         self.suppPIDs.sort()
 
 
     # move this to global (have it return list of supported PIDs like this: [ PID, desc, '' ] )
     def interpret_features(self, fpid):
         """ Interpret feature query and add supported PIDs to supported PID list. """
-        # 
-        pbytes = len(fpid) / 2
         
-        # debug
-        print "Checking feature PID:", fpid, "--",
+        pbytes = len(fpid) / 2
+        M = fpid[0:2]
+        # integer math seems to work better
+        P0 = int(fpid[2:], 16)
+        
         result = self.reader.OBD2_cmd(fpid)
-        # debug
-        print result
         
         feat_bits = ""
         if len(result) > 0 and len(result[0]) > pbytes:
             for hexbyte in  result[0][pbytes:] :
                 # unreverse the bitstring
                 feat_bits += hex_to_bitstring(hexbyte)[::-1]
-            # debug
-            #print "len:", len(feat_bits)
             for i in range(32):
                 if feat_bits[i] == '1':
-                    fhex = "0x" + fpid
-                    newpid = str.upper(hex(int(fhex,16) + i + 1)[2:]).rjust(4,'0')
-                    # debug
-                    #print newpid, "is supported"
-                    self.suppPIDs.append(newpid)
+                    # do math as integers, then convert back to hex
+                    P = str.upper(hex(P0+i+1))[2:].rjust(2, "0")
+                    newpid = M + P
+                    if newpid not in self.suppPIDs:
+                        self.suppPIDs.append(newpid)
+                    # add mode 02 pids based on mode 01 pids
+                    if M == '01' and P != '01' and P != '02':
+                        newpid = '02' + P
+                        if newpid not in self.suppPIDs:
+                            self.suppPIDs.append(newpid)
         else:
             self.suppPIDs.remove(fpid)
 
@@ -841,13 +858,13 @@ class OBD2:
     def show_info(self):
         """ Show general information. """
         # just interprets self.info for CLI, GUI would directly read self.info
-        print "Complies with: ", OBD_standards[self.info['OBD_std']]
-        print "    Fuel type: ", fuel_types[self.info['fuel_type']]
-        print "          VIN: ", self.info['VIN']
-        print "  Calibration: ", self.info['Calibration']
-        print "         Year: ", self.info['Year']
-        print " Manufacturer: ", self.info['Make']
-        print "        Model: ", self.info['Model']
+        print "VIN".rjust(16),           ": ", self.info['VIN']
+        #print "Year".rjust(16),          ": ", self.info['Year']
+        #print "Manufacturer".rjust(16),  ": ", self.info['Make']
+        #print "Model".rjust(16),         ": ", self.info['Model']
+        print "Complies with".rjust(16), ": ", OBD_standards[self.info['OBD_std']]
+        print "Fuel type".rjust(16),     ": ", fuel_types[self.info['fuel_type']]
+        print "Calibration".rjust(16),   ": ", self.info['Calibration']
 
 
     ## 3 continuous and 8 non-continuous OBD monitors, plus current fuel system and 2nd air status
@@ -860,26 +877,76 @@ class OBD2:
     #DTC_PIDs   =     ["0101", "0102", "0121", "0130", "0131", "0141", "014D", "014E"]
 
 
-    def scan_diag_info(self):
-        """ Scan vehicle for current sensor readings . """
+    def scan_perm_diag_info(self):
+        """ Scan vehicle for status of MIL, PERMANENT emmissions monitors, and PERMANENT DTCs. """
         # 
-        for dpid in diagnostic_PIDs :
+        #  PID 0101 (monitors, MIL, DTC count) is mandatory
+        #  PID 03 (list of DTCs) is mandatory
+        # 
+        print "PERMANENT Emmissions monitors:"
+        result = self.reader.OBD2_cmd("0101")
+        values = decode_obd2_reply(result)
+        for val in values:
+            # set self.MIL & DTC count
+            if val[0] == "MIL":
+                self.MIL = val[1]
+            if val[0] == "DTC count":
+                self.DTCcount = val[1]
+            # debug / log
+            print val[0].rjust(16), ":", str(val[1]).rjust(32), val[2]
+        print "--"
+        # 
+        print "Current PERMANENT Diagnostic Status Codes:"
+        result = self.reader.OBD2_cmd("03")
+        values = decode_obd2_reply(result)
+        for val in values:
+            # debug / log
+            print val[0].rjust(16), ":", str(val[1]).rjust(32), val[2]
+        print "--"
+        # 
+        print "Related information:"
+        for dpid in misc_diag_PIDs :
             if dpid in self.suppPIDs :
                 # debug / log
                 scantime = time.time()
-                print scantime, "--",
+                #print scantime, "--",
                 # debug / log
-                print "read PID:", dpid, "--",
+                #print "read PID:", dpid, "--",
+                print dpid.rjust(8), ":",
                 result = self.reader.OBD2_cmd(dpid)
                 # debug / log
-                print "result:", result, "--",
+                #print "result:", result, "--",
 
                 values = decode_obd2_reply(result)
                 for val in values:
                     # debug / log
-                    print val[0], ":", val[1], val[2]
+                    print val[0].rjust(40), ":", str(val[1]).rjust(8), val[2]
                 if len(values) == 0:
                     print ""
+        print "--"
+
+
+    def scan_cycle_diag_info(self):
+        """ Scan vehicle for status of DRIVE CYCLE emmissions monitors and DTCs. """
+        # 
+        #  PID 0141 (DC monitors) 
+        #  PID 07 (list of DC DTCs)
+        # 
+        print "DRIVE CYCLE Emmissions monitors:"
+        result = self.reader.OBD2_cmd("0141")
+        values = decode_obd2_reply(result)
+        for val in values:
+            # debug / log
+            print val[0].rjust(16), ":", str(val[1]).rjust(32), val[2]
+        print "--"
+        # 
+        print "Current DRIVE CYCLE Diagnostic Status Codes:"
+        result = self.reader.OBD2_cmd("07")
+        values = decode_obd2_reply(result)
+        for val in values:
+            # debug / log
+            print val[0].rjust(16), ":", str(val[1]).rjust(32), val[2]
+        print "--"
 
 
     def scan_curr_sensors(self):
@@ -887,27 +954,29 @@ class OBD2:
         # one pass through the supported PIDs in mode 0x01
         for spid in self.suppPIDs:
             #print "supported PID:", spid
-            #if spid[1] == '1' and spid not in feature_PIDs and spid not in diagnostic_PIDs:
-            if spid not in feature_PIDs and spid not in diagnostic_PIDs:
+            if spid[1] == '1' and spid not in feature_PIDs and spid not in misc_diag_PIDs and spid != "0101" and spid != "0102" and spid != "0141" and spid != "011C" :
+            #if spid not in feature_PIDs and spid not in misc_diag_PIDs:
                 # debug / log
                 scantime = time.time()
-                print scantime, "--",
+                #print scantime, "--",
                 # debug / log
-                print "read PID:", spid, "--",
+                #print "read PID:", spid, "--",
+                print spid.rjust(8), ": ",
                 result = self.reader.OBD2_cmd(spid)
                 # debug / log
-                print "result:", result, "--",
+                #print "result:", result, "--",
 
                 values = decode_obd2_reply(result)
                 for val in values:
                     # debug / log
-                    print val[0], ":", val[1], val[2]
+                    #print val[0], ":", val[1], val[2]
+                    print val[0].rjust(40), ": ", str(val[1]).rjust(8), val[2]
                 if len(values) == 0:
                     print ""
 
 
     # simulator does not have freeze frame sensors
-    def scan_frozen_sensors(self):
+    def scan_freeze_frame(self):
         """ Scan vehicle for freeze-frame sensor readings . """
         # one pass through the supported PIDs in mode 0x02, Freeze frame from when last DTC triggered
         for spid in self.suppPIDs:

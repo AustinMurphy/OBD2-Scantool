@@ -68,8 +68,8 @@ print ""
 print "Serial port attributes"
 print "----------------------"
 
-ser_device = '/dev/pts/7'
-#ser_device = '/dev/ttyUSB0'
+#ser_device = '/dev/pts/7'
+ser_device = '/dev/ttyUSB0'
 
 ser_settings = {
  'baudrate': 38400,
@@ -89,13 +89,13 @@ port = serial.Serial(None)
 port.port = ser_device
 port.applySettingsDict(ser_settings)
 
-print "Device: " + port.name
+print "Device".rjust(16), ": ",  port.name
 #pprint.pprint( port.getSettingsDict() )
 #print ""
 
 settings = port.getSettingsDict()
-for k in settings.keys():
-    print k, ": ", settings[k]
+for k in sorted(settings.keys()):
+    print k.rjust(16), ": ", settings[k]
 
 
 
@@ -112,12 +112,12 @@ reader = obd2_reader.OBD2reader( READER )
 reader.Port = port
 reader.connect()   # this also opens the serial port
 
-print "Device: " + str(reader.Device)
-print "State:  " + str(reader.State)
+print "Device".rjust(16), ": ", str(reader.Device)
+print "State".rjust(16), ": ", str(reader.State)
 #pprint.pprint( reader.attr )
 
-for k in reader.attr.keys():
-    print k, ": ", reader.attr[k]
+for k in sorted(reader.attr.keys()):
+    print k.rjust(16), ": ", reader.attr[k][1]
 
 
 
@@ -163,10 +163,16 @@ print " "
 print ""
 print "=================================================================="
 print " "
-print "Scan for Diagnostic info"
-print "------------------------"
+print "Scan for Diagnostic and Emmissions Monitor info"
+print "-----------------------------------------------"
 print " "
-vehicle.scan_diag_info()
+print " OVERALL:"
+print " "
+vehicle.scan_perm_diag_info()
+print " "
+print " THIS DRIVE CYCLE ONLY:"
+print " "
+vehicle.scan_cycle_diag_info()
 print " "
 
 

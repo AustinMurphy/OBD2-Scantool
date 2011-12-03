@@ -12,5 +12,8 @@ Forked from pyobd  (GPL)
  - http://www.obdtester.com/pyobd
 
 
+DESIGN GOALS:
+ - Functional OBD2 scantool for Linux
+ - Flexible, modular design for easy extension and reuse
 
 
