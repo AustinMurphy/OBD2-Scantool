@@ -640,6 +640,7 @@ def decode_data_by_mode(mode, pid, count, data):
         return values
 
     elif PID == '0101' or PID == '0141':
+        # Fusion returns 2 lines...
         return decode_monitors(P, data)
 
     elif PID == '0103':
@@ -672,6 +673,7 @@ def decode_data_by_mode(mode, pid, count, data):
         return values
 
     elif PID == '011C':
+        # fusion doesn't work with this
         A = data[0]
         values.append( ["OBD standard", A, OBD_standards[A]] )
         return values
