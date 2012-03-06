@@ -31,7 +31,7 @@
 
 
 # for debugging/development
-#import pprint
+import pprint
 
 # lots of string manipulation
 import string
@@ -296,7 +296,8 @@ def decode_text( data ) :
     TXT = ''
     for d in data:
          # check that result is actually ascii
-         TXT += binascii.unhexlify(d)
+         if d >= '20' and d <= '7E':
+             TXT += binascii.unhexlify(d)
     return TXT
 
 
@@ -467,6 +468,9 @@ def decode_obd2_reply(result):
         elif result[0][0] == 'NO' and result[0][1] == 'DATA':
             #print "nothing to decode!"
             return values
+        elif result[0][0] == 'NO DATA':
+            #print "nothing to decode!"
+            return values
         else :
             # single line response
             #   typical for most sensors
@@ -532,7 +536,7 @@ def decode_obd2_reply(result):
 
         else:
             # multiline old style reply 
-            #  possible for 0902 (VIN) on pre-CAN vehicles
+            #  possible for 0902 (VIN) or 0904 (Calibr) on pre-CAN vehicles or early CAN vehicles
             FMT = 'mlold'
             # mode
             M = result[0][0]
@@ -545,13 +549,16 @@ def decode_obd2_reply(result):
                 P = ''
                 for l in result :
                     for d in l[1:] :
-                       D += d
+                       D.append(d)
 
             elif M == '01' or M == '02' or M == '06' or M == '09':
                 P = str.upper(result[0][1]).rjust(2,'0')
+                # debug:
+                #print "Data:"
+                #pprint.pprint(result)
                 for l in result :
-                    for d in l[2:] :
-                       D += d
+                    for d in l[3:] :
+                        D.append(d)
   
     # debug
     #print "FMT M P C D :", FMT, M, P, C, D
@@ -646,6 +653,10 @@ def decode_data_by_mode(mode, pid, count, data):
     elif PID == '0103':
         A = hex_to_bitstring(data[0])
         B = hex_to_bitstring(data[1])
+        # debug
+        #print "A:", A, "B:", B
+        fcode1 = -1
+        fcode2 = -1
         i = 0 
         while i < 5:
             if A[i] == '1':
@@ -653,8 +664,10 @@ def decode_data_by_mode(mode, pid, count, data):
             if B[i] == '1':
                 fcode2 = i
             i += 1
-        values.append( ["Fuel system 1 status", fcode1, fuel_system_statuses[fcode1]] )
-        values.append( ["Fuel system 2 status", fcode2, fuel_system_statuses[fcode2]] )
+        if fcode1 != -1:
+          values.append( ["Fuel system 1 status", fcode1, fuel_system_statuses[fcode1]] )
+        if fcode2 != -1:
+          values.append( ["Fuel system 2 status", fcode2, fuel_system_statuses[fcode2]] )
         return values
 
     elif PID == '0112':

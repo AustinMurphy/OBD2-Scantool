@@ -155,6 +155,11 @@ class OBD2reader:
      def ELM327_cmd(self, cmd):
          """Private method for sending any CMD to an ELM327 style reader and getting the result"""
          #  SENDs a command and then RECVs the reply until it sees a ">"  ELM prompt
+         #  Separates textlines into array
+         #  returns array 
+         #   
+         #   TODO  logging to a trace file
+         #   TODO  lock and unlock for thread safety
          
          # SEND
          if self.Port.writable():
@@ -174,6 +179,9 @@ class OBD2reader:
                # read 1 char at a time 
                #   until we get to the '>' prompt
                c = self.Port.read(1)
+               # 
+               #  TODO: if logging==on, append c to trace file
+               # 
                if c == '>':
                    break
                elif c != '\r' and c != '\n':
@@ -186,15 +194,18 @@ class OBD2reader:
 
          # debug
          #pprint.pprint(reply)
+         #
+         #  array of text lines
          return reply
 
 
      def ELM327_OBD2_cmd(self, cmd):
          """Private method for sending an OBD2 PID to a ELM327 style reader."""
-         # should really throw an exception if something is wrong, HOW?
-         # might want to check that the cmd is valid OBD2 PID
+         # should really throw an exception if something is wrong
 
+         # Must be connected & operational
          if self.State == 0:
+             # a slightly more informative result might help
              return []
 
          cmd = str(cmd)
