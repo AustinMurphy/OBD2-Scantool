@@ -74,6 +74,7 @@ GET_CYCLE_DTCs     = "07"
 GET_CLEARED_DTCs   = "0A"
 
 
+# Parameters are the same for modes $01 and $02
 supported_PIDs  = ["0100", "0101", "0104", "0105", "010C", "010D", "0111",
                    "0200", "0202", "0204", "0205", "020C", "020D", "0211",
                    "0600", 
@@ -88,10 +89,20 @@ supported_PIDs  = ["0100", "0101", "0104", "0105", "010C", "010D", "0111",
 # 010D/020D - Vehicle speed (km/h)
 # 0111/0211 - Throttle position (%)
 
+# Feature PIDs:
+# modes 01, 02, 05, 06, 08, 09
+# params 00, 20, 40, 60, A0, C0, E0
+#  
 feature_PIDs    = ["0100", "0120", "0140", "0160", "0180", "01A0", "01C0", "01E0",
                    "0200", "0220", "0240", "0260", "0280", "02A0", "02C0", "02E0",
+                   "0500", "0520", "0540", "0560", "0580", "05A0", "05C0", "05E0",
                    "0600", "0620", "0640", "0660", "0680", "06A0", "06C0", "06E0",
-                   "0900" ]
+                   "0900", "0920", "0940", "0960", "0980", "09A0", "09C0", "09E0" ]
+
+#                   "0800", "0820", "0840", "0860", "0880", "08A0", "08C0", "08E0",
+#  mode 08 involves controlling the ECU, not yet...
+
+# in mode 06, PIDs are called TIDs, Test IDs or MIDs for Monitor IDs.
 
 #
 # Emmissions Inspection and Diagnostics
@@ -110,7 +121,6 @@ misc_diag_PIDs = [ "0130", "0131", "014E", "0121", "014D"]
 # 01 4E - Time since trouble codes cleared (minutes)
 # 01 21 - Distance traveled with MIL on (km)
 # 01 4D - Time run with MIL on (minutes)
-
 
 
 # 01 41 - Monitor status this drive cycle
@@ -532,7 +542,11 @@ def decode_obd2_reply(result):
 
             elif M == '06':
                 P = str.upper(MSG[1]).rjust(2,'0')
-                D = MSG[2:]
+                #  each monitor can have multiple tests
+                #  the data array (D) should be a multiple of 9 bytes:  MID, TID, SCALE, READING(2), MIN(2), MAX(2)
+                #  it should include the "PID" aka "MID"
+                D = MSG[1:]
+                #D = MSG[2:]
 
         else:
             # multiline old style reply 
@@ -561,7 +575,7 @@ def decode_obd2_reply(result):
                         D.append(d)
   
     # debug
-    #print "FMT M P C D :", FMT, M, P, C, D
+    print "FMT M P C D :", FMT, M, P, C, D
     if len(D) > 0:
         return decode_data_by_mode(M, P, C, D)
     else:
@@ -702,8 +716,13 @@ def decode_data_by_mode(mode, pid, count, data):
         return values
 
     # not sure about these...
-    elif PID == '0906' or PID == '0908':
+    elif PID == '0906':
         values.append( [ PIDs[PID][1][0][0], decode_hex( data ), "" ] )
+        return values
+
+    elif PID == '0908':
+        # TODO: split result into C pairs of databytes
+        values.append( [ PIDs[PID][1][0][0], decode_ints( data ), "" ] )
         return values
 
     # insert new elif sections here
