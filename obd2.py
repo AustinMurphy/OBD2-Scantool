@@ -308,6 +308,8 @@ def decode_text( data ) :
          # check that result is actually ascii
          if d >= '20' and d <= '7E':
              TXT += binascii.unhexlify(d)
+         else:
+             TXT += '_'
     return TXT
 
 
@@ -575,7 +577,7 @@ def decode_obd2_reply(result):
                         D.append(d)
   
     # debug
-    print "FMT M P C D :", FMT, M, P, C, D
+    #print "FMT M P C D :", FMT, M, P, C, D
     if len(D) > 0:
         return decode_data_by_mode(M, P, C, D)
     else:
@@ -661,7 +663,6 @@ def decode_data_by_mode(mode, pid, count, data):
         return values
 
     elif PID == '0101' or PID == '0141':
-        # Fusion returns 2 lines...
         return decode_monitors(P, data)
 
     elif PID == '0103':
@@ -700,7 +701,6 @@ def decode_data_by_mode(mode, pid, count, data):
         return values
 
     elif PID == '011C':
-        # fusion doesn't work with this
         A = data[0]
         values.append( ["OBD standard", A, OBD_standards[A]] )
         return values
@@ -710,12 +710,10 @@ def decode_data_by_mode(mode, pid, count, data):
         values.append( ["Fuel type", A, fuel_types[A]] )
         return values
 
-    #elif M == '09':
-    elif PID == '0902' or PID == '0904':
+    elif PID == '0902' or PID == '0904' or PID == '090A':
         values.append( [ PIDs[PID][1][0][0], decode_text( data ), "" ] )
         return values
 
-    # not sure about these...
     elif PID == '0906':
         values.append( [ PIDs[PID][1][0][0], decode_hex( data ), "" ] )
         return values
