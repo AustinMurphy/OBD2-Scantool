@@ -52,6 +52,7 @@ class OBD2reader:
         self.Port     = None       # connect later
         #
         self.State      = 0        # 1 is connected, 0 is disconnected/failed
+        self.Headers    = 0        # ECU headers, 1 is on, 0 is off
         self.attr       = {}       # the list of device attributes and their values
         self.suppt_attr = {}       # the list of supported device attributes 
         #
@@ -97,26 +98,36 @@ class OBD2reader:
     def disconnect(self):
         """ Resets reader device and closes serial connection"""
         if (self.Port!= None):
-          if self.State==1:
-              self.reset()
-              self.Port.close()
-          else:
-              print "Can't disconnect, reader not connected"
-              raise self.ErrorNotConnected("Can't disconnect")
+            if self.State==1:
+                self.reset()
+                self.Port.close()
+            else:
+                print "Can't disconnect, reader not connected"
+                raise self.ErrorNotConnected("Can't disconnect")
         
         self.clear_attr()
         self.State = 0
 
     def OBD2_cmd(self, cmd):
         """Send an OBD2 PID to the vehicle and get the result"""
-        if self.State == 1:
-          if self.Device == "ELM327":
-              return self.ELM327_OBD2_cmd(cmd)
-          else:
-              return []
+        #  should return this:
+        #[
+        #  [ ECU ID, MODE, PID, [ DATABYTES ] ],
+        #  [ ECU ID, MODE, PID, [ DATABYTES ] ],
+        #  ...
+        #]
+
+        result = []
+        if self.State != 1:
+            print "Can't send OBD2 command, reader not connected"
+            raise self.ErrorNotConnected("Can't send OBD2 command")
         else:
-          print "Can't send OBD2 command, reader not connected"
-          raise self.ErrorNotConnected("Can't send OBD2 command")
+          if self.Device == "ELM327":
+              result = self.ELM327_OBD2_cmd(cmd)
+          else:
+              raise self.ErrorReaderNotRecognized("Unknown OBD2 Reader device")
+
+        return result
 
     #
     #  Private functions  (don't call these except from within this context)
@@ -127,29 +138,29 @@ class OBD2reader:
         # data attributes that should get filled in when reader is working
         self.attr = {}
         for i in self.suppt_attr.keys():
-          self.attr[i] = "Unknown"
+            self.attr[i] = "Unknown"
 
     def rtrv_attr(self):
         """ Retrieves data attributes"""
-        if self.State == 1:
-          if self.Device == "ELM327":
-              self.ELM327_rtrv_attr()
-          else:
-              pass
+        if self.State != 1:
+            print "Can't retrieve reader attributes, reader not connected"
+            raise self.ErrorNotConnected("Can't retrieve reader attributes")
         else:
-          print "Can't retrieve reader attributes, reader not connected"
-          raise self.ErrorNotConnected("Can't retrieve reader attributes")
+            if self.Device == "ELM327":
+                self.ELM327_rtrv_attr()
+            else:
+                raise self.ErrorReaderNotRecognized("Unknown OBD2 Reader device")
 
     def reset(self):
         """ Resets device"""
-        if self.State == 1:
-          if self.Device == "ELM327":
-              self.ELM327_reset()
-          else:
-              pass
+        if self.State != 1:
+            print "Can't reset reader, reader not connected"
+            raise self.ErrorNotConnected("Can't reset reader")
         else:
-          print "Can't reset reader, reader not connected"
-          raise self.ErrorNotConnected("Can't reset reader")
+            if self.Device == "ELM327":
+                self.ELM327_reset()
+            else:
+                raise self.ErrorReaderNotRecognized("Unknown OBD2 Reader device")
 
     def flush_recv_buf(self):
         """Internal use only: not a public interface"""
@@ -166,13 +177,15 @@ class OBD2reader:
     def ELM327_rtrv_attr(self):
         """ Retrieves data attributes"""
         for i in self.suppt_attr.keys():
-          self.attr[i] = self.ELM327_cmd( self.suppt_attr[i] )
+            self.attr[i] = self.ELM327_cmd( self.suppt_attr[i] )
 
     def ELM327_reset(self):
         """ Resets device"""
         self.ELM327_cmd("atz")    # reset ELM327 firmware
         #self.ELM327_cmd("ate0")   # echo off
         #self.ELM327_cmd("atl0")   # linefeeds off
+        if self.Headers == 1:
+            self.ELM327_cmd("ath1")  # headers on
 
     def ELM327_cmd(self, cmd):
         """Private method for sending any CMD to an ELM327 style reader and getting the result"""
@@ -191,39 +204,46 @@ class OBD2reader:
             self.Port.write("\r\n")
 
         # RECV
-        reply = []
-        #  reply is a list of non-empty strings, 
+        raw_result = []
+        #  raw_result is a list of non-empty strings, 
         #  each string is a line of info from the reader
         buffer = ''
-        while len(reply) < 1 or self.Port.inWaiting() > 0:
-          # we need to have something to reply.. 
-          while 1:
-              # read 1 char at a time 
-              #   until we get to the '>' prompt
-              c = self.Port.read(1)
-              # 
-              #  TODO: if logging==on, append c to trace file
-              # 
-              if c == '>':
-                  break
-              elif c != '\r' and c != '\n':
-                  buffer = buffer + c
-              elif c != '\n':
-                  if buffer != '':
-                      reply.append(buffer)
-                      buffer = ''
-          time.sleep(0.1)
+        while len(raw_result) < 1 or self.Port.inWaiting() > 0:
+            # we need to have something to reply.. 
+            while 1:
+                # read 1 char at a time 
+                #   until we get to the '>' prompt
+                c = self.Port.read(1)
+                # 
+                #  TODO: if logging==on, append c to trace file
+                # 
+                if c == '>':
+                    break
+                elif c != '\r' and c != '\n':
+                    buffer = buffer + c
+                elif c != '\n':
+                    if buffer != '':
+                        raw_result.append(buffer)
+                        buffer = ''
+            time.sleep(0.1)
 
         # debug
-        #pprint.pprint(reply)
+        #pprint.pprint(raw_result)
         #
-        #  array of text lines
-        return reply
+        #  1D array of text lines
+        return raw_result
 
 
     def ELM327_OBD2_cmd(self, cmd):
         """Private method for sending an OBD2 PID to a ELM327 style reader."""
-        # should really throw an exception if something is wrong
+        #  should return this:
+        #[
+        #  [ ECU ID, MODE, PID, [ DATABYTES ] ],
+        #  [ ECU ID, MODE, PID, [ DATABYTES ] ],
+        #  ...
+        #]
+
+        # should really raise an exception if something is wrong
 
         # Must be connected & operational
         if self.State == 0:
@@ -233,7 +253,7 @@ class OBD2reader:
         cmd = str(cmd)
         raw_result = self.ELM327_cmd(cmd)
  
-        # raw_result is now a list
+        # raw_result is a list
         #  [0] = the cmd sent
         #  [1] = first line of the response
         #  [2] = second line of the response
@@ -241,7 +261,7 @@ class OBD2reader:
 
         # check that the ELM headers match the original cmd
         if raw_result[0] != cmd:
-           print "PANIC! - cmd is different"
+            print "PANIC! - cmd is different"
 
         # return lists of hexbytes
         result = []
@@ -253,6 +273,7 @@ class OBD2reader:
               if len(temp) > 0:
                   result.append(temp)
 
+        #  2D array 
         return result
 
 
@@ -273,6 +294,12 @@ class OBD2reader:
             return repr(self.value)
 
     class ErrorNotConnected(Exception):
+        def __init__(self, value):
+            self.value = value
+        def __str__(self):
+            return repr(self.value)
+
+    class ErrorReaderNotRecognized(Exception):
         def __init__(self, value):
             self.value = value
         def __str__(self):

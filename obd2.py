@@ -427,6 +427,7 @@ def decode_monitors( P, data ) :
 # starting point for decoding any obd2 reply
 #
 
+#  This will be moved to obd2_reader
 def decode_obd2_reply(result):
     """ Decode sensor reading . """
     # typical result is the list of hexbytes:  4+MODE, PID, A, B, C, D, ...
