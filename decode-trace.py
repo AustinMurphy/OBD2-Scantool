@@ -84,19 +84,29 @@ def main():
     
 
     # create OBD2_READER object 
+    TYPE   = 'FILE'
+    READER = 'ELM327'
+    
+    # create reader object (disconnected)
+    reader = obd2_reader.OBD2reader( TYPE, READER )
 
     # open tracefile
+    reader.open_trace(tracefile)
+
+    # manually set since we can't query the tracefile
+    reader.Style   = 'can'
+    reader.Headers = 1
+
 
     print ""
-
-
-
+    print "Reading from tracefile..."
+    print ""
 
     while 1:
-        trace_record = self.get_record_from_trace(self.tf)
-        if eof == 1:
-            break
-        obd2_record = obd2_reader.triage_record(trace_record)
+        print "-----------------------------------"
+        record = reader.RTRV_record()
+        pprint.pprint(record)
+        obd2_record = reader.triage_record( record )
         if obd2_record == []:
             # then this must have been something other than an obd2_record, nothing to do
             pass
@@ -104,6 +114,11 @@ def main():
             # do something with the obd2_record
             pprint.pprint(obd2_record)
 
+        if reader.eof == 1:
+            break
+
+    print "-----------------------------------"
+    print "END"
 
 
 
