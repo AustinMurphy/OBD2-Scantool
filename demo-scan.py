@@ -105,10 +105,11 @@ def main():
     print "OBD2 reader device"
     print "------------------"
     
+    TYPE   = 'SERIAL'
     READER = 'ELM327'
     
     # create reader object (disconnected)
-    reader = obd2_reader.OBD2reader( READER )
+    reader = obd2_reader.OBD2reader( TYPE, READER )
     reader.Port = port
     reader.connect()   # this also opens the serial port
     

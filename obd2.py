@@ -350,8 +350,11 @@ def decode_DTCs( data ) :
     values = []
 
     charcode = [ "P", "C", "B", "U" ]
+
+    if len(data) % 2 == 1:
+        numDTCs = data.pop(0)
     
-    while len(data) > 0:
+    while len(data) > 1:
         A = data.pop(0)
         B = data.pop(0)
  
@@ -365,7 +368,7 @@ def decode_DTCs( data ) :
 
 
 
-def decode_monitors( P, data ) :
+def decode_monitors( PID, data ) :
     """ Decode onboard emmissions monitors """
     # this is the primary OBD info considered by the Official Emmissions Inspection process
     # 0101 looks at the overall status of the monitors, 
@@ -374,7 +377,7 @@ def decode_monitors( P, data ) :
     [A, B, C, D] = hexbytes_to_bitarrays( data )
 
     # PID 0101 has MIL & DTC count, 0141 does not
-    if P == '01':
+    if PID == '0101':
         # debug
         print "Monitor status OVERALL"
         MIL = "Off"
@@ -408,6 +411,8 @@ def decode_monitors( P, data ) :
             if C[i] == '1':
                 if D[i] == '0':
                     done = "OK"
+                # debug
+                #print 'MONITOR', non_continuous_monitors[0][i], done
                 values.append( ['MONITOR', non_continuous_monitors[0][i], done] )
 
     if ign == 1 :
@@ -419,6 +424,8 @@ def decode_monitors( P, data ) :
                 values.append( ['MONITOR', non_continuous_monitors[1][i], done] )
 
 
+    # debug
+    #pprint.pprint(values)
     return values
 
 
@@ -427,170 +434,86 @@ def decode_monitors( P, data ) :
 # starting point for decoding any obd2 reply
 #
 
-#  This will be moved to obd2_reader
-def decode_obd2_reply(result):
+def decode_obd2_record(obd2_record):
     """ Decode sensor reading . """
-    # typical result is the list of hexbytes:  4+MODE, PID, A, B, C, D, ...
-    # Other possiblities include mulitple lines of above, 
-    #   or CAN style, with bytecount on first line followed by 1: data, 2: data, ...
+
+    # ctime
+    #TS   = obd2_record['timestamp']
+    # simple string
+    CMD  = obd2_record['command']
+    # dict, keyed on ecuid, value is 1D array of databytes, no padding
+    RESP = obd2_record['responses']
+
+    decoded_record = {}
+    decoded_record['timestamp'] = obd2_record['timestamp']
+    decoded_record['command']   = obd2_record['command']
+    decoded_record['values']    = {}
 
     # values returned should be a list of 3-tuples (desc, value, unit) or something equivalent
     #  or an empty list if there is nothing to decode
     values = []
 
-    # result format style: 
-    #   sl (singleline), 
-    #   mlold (multiline OLD style), 
-    #   mlcan (multiline CAN style)
-    FMT = ''
-    # mode 
-    M = ''
-    # pid (not incl. mode)
-    P = ''
-    # C - count of datapoints reported, only reported if response is CAN style. 0 means unknown
-    C = ''
-    # data to decode, without MODE, PID, count or padding if response is CAN style
-    D = []   
+    for ECU in RESP.iterkeys():
 
-    #
-    # filter out bogus replys
-    # determine message format
-    # determine MODE
-    # determine PID
-    #
-    # modes 3, 4, 7, A(?) have no PIDs, 
-    # modes 1, 2, 9 have PIDs with 2 chars (1 hexbyte)
-    # mode 5, has PIDs with 4 chars (2 hexbytes), 
-    # don't know about other modes
-    #
+        DATABYTES = RESP[ECU]
 
-    if len(result) == 0:
-        #debug
-        #print "nothing to decode!"
-        return values
+        # M: mode 
+        # P: pid (not incl. mode)
+        # D: data to decode, without MODE, PID, count or padding 
 
-    elif len(result) == 1:
-        #debug
-        #print "result = 1 line"
-        if len(result[0]) == 0:
-            #print "nothing to decode!"
-            return values
-        elif result[0][0] == '?':
-            #print "nothing to decode!"
-            return values
-        elif result[0][0] == 'NO' and result[0][1] == 'DATA':
-            #print "nothing to decode!"
-            return values
-        elif result[0][0] == 'NO DATA':
-            #print "nothing to decode!"
-            return values
-        else :
-            # single line response
-            #   typical for most sensors
-            FMT = 'sl'
-            M = result[0][0]
-            M = str(hex(int(M,16) - 0x40))[2:]
-            M = str.upper(M).rjust(2,'0')
 
-            MSG = result[0][1:]
-            if M == '03' or M == '04' or M == '07' or M == '0A':
-                P = ''
-                if len(MSG) % 2 == 1 :              
-                    # ISO 15765-4, CAN style ( M, C, C pairs of bytes)
-                    C = int(MSG[0], 16)
-                    D = MSG[1:]
-                else :
-                    # OLD style ( M, 3 pairs of bytes)
-                    D = MSG
+        # determine MODE
 
-            elif M == '01' or M == '02' or M == '09':
-                P = str.upper(MSG[0]).rjust(2,'0')
-                #C = int(MSG[1], 16)
-                D = MSG[1:]
+        M = DATABYTES[0] 
+        M = str(hex(int(M,16) - 0x40))[2:]
+        M = str.upper(M).rjust(2,'0')
 
-    elif len(result) > 1 :
-        #print "result > 1 line"
-        if len(result[0]) == 1:
-            # multiline CAN style reply, ISO 15765-2 
-            #   typical for PID 0902 (VIN) 
-            FMT = 'mlcan'
-            
-            # number of databytes in message
-            B = int(result[0][0], 16)
 
-            MSG = []
+        # determine PID
 
-            # strip the line numbers & any padding at the end
-            i = 0
-            for l in result[1:] :
-                for d in l[1:] :
-                   if i < B :
-                       MSG.append(d)
-                   i += 1;
+        # modes 03, 04, 07, 0A have no PIDs, 
+        if M == '03' or M == '04' or M == '07' or M == '0A':
+            P = ''
+            D = DATABYTES[1:]
 
-            # mode
-            M = MSG[0]
-            M = str(hex(int(M,16) - 0x40))[2:]
-            M = str.upper(M).rjust(2,'0')
+        # modes 01, 02, 06, 09 have PIDs with 2 chars (1 hexbyte)
+        elif M == '01' or M == '02' or M == '06' or M == '09':
+            P = str.upper(DATABYTES[1]).rjust(2,'0')
+            D = DATABYTES[2:]
 
-            if M == '03' or M == '04' or M == '07' or M == '0A':
-                P = ''
-                C = int(MSG[1], 16)
-                D = MSG[2:]
+        # mode 05, has PIDs with 4 chars (2 hexbytes), 
+        elif M == '05':
+            P = str.upper(DATABYTES[1]).rjust(2,'0') + str.upper(DATABYTES[2]).rjust(2,'0')
+            D = DATABYTES[3:]
 
-            elif M == '01' or M == '02' or M == '09':
-                P = str.upper(MSG[1]).rjust(2,'0')
-                C = int(MSG[2], 16)
-                D = MSG[3:]
-
-            elif M == '06':
-                P = str.upper(MSG[1]).rjust(2,'0')
-                #  each monitor can have multiple tests
-                #  the data array (D) should be a multiple of 9 bytes:  MID, TID, SCALE, READING(2), MIN(2), MAX(2)
-                #  it should include the "PID" aka "MID"
-                D = MSG[1:]
-                #D = MSG[2:]
-
+        # don't know about other modes
         else:
-            # multiline old style reply 
-            #  possible for 0902 (VIN) or 0904 (Calibr) on pre-CAN vehicles or early CAN vehicles
-            FMT = 'mlold'
-            # mode
-            M = result[0][0]
-            M = str(hex(int(M,16) - 0x40))[2:]
-            M = str.upper(M).rjust(2,'0')
+            # PANIC!!! ARGH!!!
+            pass
 
-            # pid 
-            P = result[0][1]
-            if M == '03' or M == '04' or M == '07' or M == '0A':
-                P = ''
-                for l in result :
-                    for d in l[1:] :
-                       D.append(d)
 
-            elif M == '01' or M == '02' or M == '06' or M == '09':
-                P = str.upper(result[0][1]).rjust(2,'0')
-                # debug:
-                #print "Data:"
-                #pprint.pprint(result)
-                for l in result :
-                    for d in l[3:] :
-                        D.append(d)
-  
-    # debug
-    #print "FMT M P C D :", FMT, M, P, C, D
-    if len(D) > 0:
-        return decode_data_by_mode(M, P, C, D)
-    else:
-        # mode 04 (clear codes) has no data to report
-        return values
+        # debug
+        #print "M P D :", M, P, D
+        if len(D) > 0:
+            decoded_record['values'][ECU] = []
+
+            ecvals = decode_data_by_mode(M, P, D)
+
+            # debug
+            #pprint.pprint(ecvals)
+
+            for v in ecvals:
+                decoded_record['values'][ECU].append(v)
+            
+
+    return decoded_record
 
 
 
 
 
-def decode_data_by_mode(mode, pid, count, data):
-    """ Decode sensor reading using PIDs dict . """
+def decode_data_by_mode(mode, pid, data):
+    """ Determine deoder to user based on mode . """
     # expecting:
     #   - the result data to be valid
     #   - the mode and pid to be extracted
@@ -599,21 +522,32 @@ def decode_data_by_mode(mode, pid, count, data):
 
     M = mode
     P = pid
-    C = count
+    D = data
 
     # values returned should be a list of 3-tuples (desc, value, unit) or something equivalent
     #  or an empty list if there is nothing to decode
     values = []
 
+    PID = M + P
+    print "PID: -", PID, "-"
+
+    # feature PIDs are the same for all modes
+    if PID in feature_PIDs:
+        #return decode_feature_pid(PID, D)
+        return []
+
 
     if M == '01' :
-        PID = '01' + str.upper(P).rjust(2,'0')
+        return decode_mode1_pid(PID, D)
+        #PID = '01' + str.upper(P).rjust(2,'0')
 
     elif M == '02' :
         # mode 2 uses the same definitions as mode 1 (I hope...)
-        PID = '01' + str.upper(P).rjust(2,'0')
         if P == '02' :
             return decode_DTCs(data)
+        else :
+            PID = '01' + P
+            return decode_mode1_pid(PID, D)
 
     elif M == '03' :
         return decode_DTCs(data)
@@ -622,7 +556,8 @@ def decode_data_by_mode(mode, pid, count, data):
         pass
 
     elif M == '05' :
-        PID = '05' + str.upper(P).rjust(4,'0')
+        #PID = '05' + str.upper(P).rjust(4,'0')
+        pass
 
     elif M == '06' :
         PID = '06' + str.upper(P).rjust(2,'0')
@@ -643,7 +578,8 @@ def decode_data_by_mode(mode, pid, count, data):
         pass
 
     elif M == '09' :
-        PID = '09' + str.upper(P).rjust(2,'0')
+        #PID = '09' + str.upper(P).rjust(2,'0')
+        return decode_mode9_pid(PID, D)
 
     elif M == '0A' :
         return decode_DTCs(data)
@@ -652,19 +588,23 @@ def decode_data_by_mode(mode, pid, count, data):
         # unknown mode
         return values
 
-    
+
+def decode_feature_pid(PID, data): 
+    """ Decode the supported features indicated."""
+
+
+def decode_mode1_pid(PID, data):
+    """ Decode Mode1 sensor reading using PIDs dict . """
+
+    values = []
 
     if PID not in PIDs :
         print "Unknown PID, data: ", PID, data
         values.append( ["Unknown", decode_hex(data), ""] )
-        return values
-
-    elif PID in feature_PIDs : 
-        # don't try to decode a feature PID
-        return values
+        return []
 
     elif PID == '0101' or PID == '0141':
-        return decode_monitors(P, data)
+        return decode_monitors(PID, data)
 
     elif PID == '0103':
         A = hex_to_bitstring(data[0])
@@ -711,6 +651,22 @@ def decode_data_by_mode(mode, pid, count, data):
         values.append( ["Fuel type", A, fuel_types[A]] )
         return values
 
+    # insert new elif sections here
+
+    else :
+        return decode_generic_pid(PID, data)
+
+
+def decode_mode9_pid(PID, data):
+    """ Decode Mode9 sensor reading using PIDs dict . """
+
+    values = []
+
+    if PID not in PIDs :
+        print "Unknown PID, data: ", PID, data
+        values.append( ["Unknown", decode_hex(data), ""] )
+        return []
+
     elif PID == '0902' or PID == '0904' or PID == '090A':
         values.append( [ PIDs[PID][1][0][0], decode_text( data ), "" ] )
         return values
@@ -726,57 +682,68 @@ def decode_data_by_mode(mode, pid, count, data):
 
     # insert new elif sections here
 
-    else :
-        databytes   = int(PIDs[PID][0])
- 
-        if len(data) < databytes :
-            #print "expecting:", databytes, "bytes, received:", len(result[0])-2, "bytes"
-            values.append( [ "ERROR", 1,  "expected more databytes" ] )
+    else:
+        return decode_generic_pid(PID, data)
+
+
+def decode_generic_pid(PID, data):
+    """ Decode generic sensor reading using PIDs dict . """
+
+    values = []
+
+    # skip unknown pids
+    if PID not in PIDs:
+        return []
+
+    databytes   = int(PIDs[PID][0])
+
+    if len(data) < databytes :
+        #print "expecting:", databytes, "bytes, received:", len(result[0])-2, "bytes"
+        values.append( [ "ERROR", 1,  "expected more databytes" ] )
+        return values
+
+    # assign A, B, C, D, ...
+    if databytes >= 1 :
+        A = int(data[0], 16)
+    if databytes >= 2 :
+        B = int(data[1], 16)
+    if databytes >= 3 :
+        C = int(data[2], 16)
+    if databytes >= 4 :
+        D = int(data[3], 16)
+    if databytes >= 5 :
+        E = int(data[4], 16)
+    if databytes >= 6 :
+        F = int(data[5], 16)
+    if databytes >= 7 :
+        G = int(data[6], 16)
+
+    # some PIDs have info for multiple sensors
+    for sensor in PIDs[PID][1] :
+        desc    = sensor[0]
+        minval  = float(sensor[1])
+        maxval  = float(sensor[2])
+        unit    = sensor[3]
+        formula = sensor[4]
+         
+        # skip decode if formula does not exist
+        if len(formula) == 0:
+            values.append( [desc, "ERROR", "FORMULA UNKNOWN"] )
             return values
 
-        # assign A, B, C, D, ...
-        if databytes >= 1 :
-            A = int(data[0], 16)
-        if databytes >= 2 :
-            B = int(data[1], 16)
-        if databytes >= 3 :
-            C = int(data[2], 16)
-        if databytes >= 4 :
-            D = int(data[3], 16)
-        if databytes >= 5 :
-            E = int(data[4], 16)
-        if databytes >= 6 :
-            F = int(data[5], 16)
-        if databytes >= 7 :
-            G = int(data[6], 16)
+        # TODO: more checking to be sure that we are not eval'ing something wierd
 
-        # some PIDs have info for multiple sensors
-        for sensor in PIDs[PID][1] :
-            desc    = sensor[0]
-            minval  = float(sensor[1])
-            maxval  = float(sensor[2])
-            unit    = sensor[3]
-            formula = sensor[4]
-             
-            # skip decode if formula does not exist
-            if len(formula) == 0:
-                values.append( [desc, "ERROR", "FORMULA UNKNOWN"] )
-                return values
+        # compute and test value
+        value = eval(formula)
 
-            # TODO: more checking to be sure that we are not eval'ing something wierd
-
-            # compute and test value
-            value = eval(formula)
-
-            if value < minval:
-                values.append( [desc, "ERROR", "undermin"] )
-            elif value > maxval:
-                values.append( [desc, "ERROR", "overmax"] )
-            else:
-                values.append( [desc, value, unit] )
+        if value < minval:
+            values.append( [desc, "ERROR", "undermin"] )
+        elif value > maxval:
+            values.append( [desc, "ERROR", "overmax"] )
+        else:
+            values.append( [desc, value, unit] )
 
     return values
-
 
 
 
@@ -825,7 +792,7 @@ class OBD2:
         self.suppPIDs.sort()
 
 
-    # move this to global (have it return list of supported PIDs like this: [ PID, desc, '' ] )
+    # move this to global (have it return a simple list of supported PIDs like this: [ PID, PID, PID, ... ] )
     def interpret_features(self, fpid):
         """ Interpret feature query and add supported PIDs to supported PID list. """
         

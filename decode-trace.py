@@ -113,6 +113,8 @@ def main():
         else:
             # do something with the obd2_record
             pprint.pprint(obd2_record)
+            print "--"
+            pprint.pprint( obd2.decode_obd2_record( obd2_record) )
 
         if reader.eof == 1:
             break

@@ -2,7 +2,7 @@
 ###########################################################################
 # odb2_reader.py
 # 
-# Copyright 2011 Austin Murphy (austin.murphy@gmail.com)
+# Copyright 2011-2012 Austin Murphy (austin.murphy@gmail.com)
 # Copyright 2009 Secons Ltd. (www.obdtester.com)
 # Copyright 2004 Donour Sizemore (donour@uchicago.edu)
 #
@@ -50,7 +50,8 @@ class OBD2reader:
         #
         self.Type       = devtype  # SERIAL, FILE, other?  
         self.Device     = device   # ELM327, other?  used to determine which reader commands to send (separate from OBD2 cmds)
-        self.Style      = 'old'    # 'old', 'can'  used to determine how to interpret the results
+        #
+        self.Style      = 'old'    # 'old', 'can'  used to determine how to interpret the results, gets updated by connect()
         #
         self.State      = 0        # 1 is connected, 0 is disconnected/failed
         self.Headers    = 0        # ECU headers, 1 is on, 0 is off
@@ -83,18 +84,10 @@ class OBD2reader:
     # Data structures - FYI
     # 
 
-    # "raw_record"  - a 1D array
-    #  [0] = the cmd sent
-    #  [1] = first line of the response
-    #  [2] = second line of the response
-    #  ...
-    #  
-    #  This is exactly what gets read from the reader device, with each line an array element
-
 
     # "record"     -  a 2D array, 
-    #             split each line of a raw_record 
-    #             each line of a raw record is a list of space separated ASCII text
+    #             first index is line, 
+    #             second index is word, 
     #             of particular interest are the "hexbytes" returned after obd2 commands
     #  
     #  This is a fully array addressible record of the command and response(s), verbatim
@@ -133,7 +126,7 @@ class OBD2reader:
                     self.flush_recv_buf()
                     self.reset()
                     self.rtrv_attr()
-                    if self.attr['Proto'] >= 6:
+                    if self.attr['ProtoNum'] >= 6:
                         self.Style = 'can'
                 #except serial.SerialException as inst:
                 # self.State = 0
@@ -277,19 +270,24 @@ class OBD2reader:
    
         # skip over garbage 
         if record == []           \
-           or record[0] == []     \
-           or record[0][0] == ''  \
-           or record[0][0] == '?' \
-           or record[1][0] == '?' \
-           or record[1][0] == 'NO DATA':
-          #print "Garbage record.  Skipping."
-          return []
+          or record[0] == []     \
+          or record[0][0] == ''  \
+          or record[0][0] == '?' :
+            #print "Garbage record.  Skipping."
+            return []
+
+        if len(record) > 1 :
+          if record[1][0] == '?' \
+          or record[1][0] == 'NO DATA':
+            #print "Garbage record.  Skipping."
+            return []
+
   
         # record the changes made by AT commands
         cmd = str.upper(record[0][0])
         if cmd[0:2] == 'AT':
-          self.interpret_at_cmd(record)
-          return []
+            self.interpret_at_cmd(record)
+            return []
  
         # format an OBD 2 command for further processing at a higher layer
         obd2_record = self.format_obd2_record(record)
@@ -539,6 +537,7 @@ class OBD2reader:
     #  ELM327 specific functions (private)
     #
 
+    # TODO - move the interpretation of these responses to interpret_at_cmd()
     def ELM327_rtrv_attr(self):
         """ Retrieves data attributes"""
         for i in self.suppt_attr.keys():
