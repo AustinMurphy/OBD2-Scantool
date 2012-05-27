@@ -290,7 +290,11 @@ class OBD2reader:
             return []
  
         # format an OBD 2 command for further processing at a higher layer
-        obd2_record = self.format_obd2_record(record)
+        try:
+            obd2_record = self.format_obd2_record(record)
+        except self.ErrorIncompleteRecord:
+            print "Garbage record.  Skipping."
+            return []
     
         return obd2_record
     
@@ -472,8 +476,34 @@ class OBD2reader:
           elif self.Headers == 0:
             #print "cmd:", cmd
             #pprint.pprint(record)
-            pass
-    
+
+            # Since there are no headers, we will assume everything was from '7E8'
+            ecu = '7E8'
+            ecuids[ecu] = {}
+            ecuids[ecu]['count'] = 0
+            ecuids[ecu]['data'] = []
+           
+            # singleline vs multiline (with line #'s)
+            lines = sorted(record[1:])
+
+            #print "DEBUG ---- LINES:"
+            #pprint.pprint(lines)
+
+            if len(lines) > 1 :
+                # multiline 
+                # 0: mode, 1: pid, 2: linenum, 3-n: data
+                # add mode & pid once, skip linenums, concat data
+                ecuids[ecu]['data'].extend(lines[0][0:2])
+                for l in lines:
+                    ecuids[ecu]['data'].extend(l[3:])
+            elif len(lines) == 1 :
+                # singleline
+                ecuids[ecu]['data'] = lines[0]
+            else:
+                # ERROR !
+                #print "ERROR, data record too short:"
+                #pprint.pprint(record)
+                raise self.ErrorIncompleteRecord("ERROR - Incomplete Response Record")
 
 
         for e in ecuids.iterkeys():
@@ -705,6 +735,12 @@ class OBD2reader:
             return repr(self.value)
 
     class ErrorRtrvBeforeSend(Exception):
+        def __init__(self, value):
+            self.value = value
+        def __str__(self):
+            return repr(self.value)
+
+    class ErrorIncompleteRecord(Exception):
         def __init__(self, value):
             self.value = value
         def __str__(self):

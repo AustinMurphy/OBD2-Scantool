@@ -96,6 +96,8 @@ def main():
     # manually set since we can't query the tracefile
     reader.Style   = 'can'
     reader.Headers = 1
+    #reader.Style   = 'old'
+    #reader.Headers = 0
 
 
     print ""
@@ -105,7 +107,7 @@ def main():
     while 1:
         print "-----------------------------------"
         record = reader.RTRV_record()
-        pprint.pprint(record)
+        #pprint.pprint(record)
         obd2_record = reader.triage_record( record )
         if obd2_record == []:
             # then this must have been something other than an obd2_record, nothing to do
