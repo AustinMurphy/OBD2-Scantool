@@ -350,12 +350,14 @@ def hexbytes_to_bitarrays( data ) :
 def decode_obd2_record(obd2_record):
     """ Decode sensor reading . """
 
+    #print "OBD2 record to decode:"
+    #pprint.pprint(obd2_record)
     # ctime
     #TS   = obd2_record['timestamp']
     # simple string
-    CMD  = obd2_record['command']
+    #CMD  = obd2_record['command']
     # dict, keyed on ecuid, value is 1D array of databytes, no padding
-    RESP = obd2_record['responses']
+    #RESP = obd2_record['responses']
 
     decoded_record = {}
     decoded_record['timestamp'] = obd2_record['timestamp']
@@ -365,23 +367,23 @@ def decode_obd2_record(obd2_record):
 
     # values returned should be a list of 3-tuples (desc, value, unit) or something equivalent
     #  or an empty list if there is nothing to decode
-    values = []
+    #values = []
 
-    for ECU in RESP.iterkeys():
+    for ECU in obd2_record['responses'].iterkeys():
 
-        DATABYTES = RESP[ECU]
+        DATABYTES = obd2_record['responses'][ECU]
+        if len(DATABYTES) < 1 :
+            decoded_record['values'][ECU] = []
+            break
 
         # M: mode 
         # P: pid (not incl. mode)
         # D: data to decode, without MODE, PID, count or padding 
 
-
         # determine MODE
-
         M = DATABYTES[0] 
         M = str(hex(int(M,16) - 0x40))[2:]
         M = str.upper(M).rjust(2,'0')
-
 
         # determine PID
         P = ''
@@ -389,7 +391,6 @@ def decode_obd2_record(obd2_record):
 
         # modes 03, 04, 07, 0A have no PIDs, 
         if M == '03' or M == '04' or M == '07' or M == '0A':
-            P = ''
             D = DATABYTES[1:]
 
         # modes 01, 02, 06, 09 have PIDs with 2 chars (1 hexbyte)
@@ -530,6 +531,8 @@ def decode_feature_pid(PID, data):
             #    newpid = '02' + P
             #    feat_pids.append(newpid)
 
+    #print "Feature PIDs:"
+    #pprint.pprint(feat_pids)
     return feat_pids
 
 
@@ -780,33 +783,50 @@ def decode_DTCs( data ) :
 class OBD2:
     """ OBD2 abstracts communication with OBD-II vehicle."""
     def __init__(self,reader):
-        """Initializes port by resetting device and gettings supported PIDs. """
+        """Initializes port by resetting device and getting supported PIDs. """
         # OBD2 reader device, see "class obd2_reader"
         self.reader = reader
 
-        # PIDs supported in this instance, preloaded with a few to start
+        # PIDs supported by any ECU in this instance, preloaded with a few to start
         self.suppPIDs = supported_PIDs
 
         # Dict of Basic info about the vehicle, VIN, fuel type, OBD standard, etc.
+        # info is PER ECU, main engine controller is not necessarily 
+        #   the only ECU that will respond
         self.info    = {
-            'OBD_std'      : '00',
-            'fuel_type'    : '00',
-            'VIN'          : "Unknown",
-            'Calibration'  : "Unknown",
-            'Year'         : "Unknown",
-            'Make'         : "Unknown",
-            'Model'        : "Unknown"
+            '7E8' :  {
+                        'OBD_std'      : '00',
+                        'fuel_type'    : '00',
+                        'VIN'          : "Unknown",
+                        'Calibration'  : "Unknown",
+                        'Year'         : "Unknown",
+                        'Make'         : "Unknown",
+                        'Model'        : "Unknown"
+                      }
         }
 
-        # Maintenance Indicator Lamp (aka. check engine light)
-        self.MIL      = "Unknown"
-        # list of DTCs
-        self.DTCcount = "Unknown"
-        #self.currDTCs = ()
-        ## monitor info
-        #self.monitors  = {}
-        ## Dict of info related to DTCs, # warmups & distance & time since codes cleared, distance & time run with MIL
-        #self.DTCinfo  = {}
+        # status is PER ECU, main engine controller is not necessarily 
+        #   the only ECU that will respond to 0101
+        self.obd2status  = {
+            '7E8' :  {
+                        # scantime is of the 0101 pid
+                        'scantime'     : "Unknown",
+                        'MIL'          : "Unknown",
+                        'kmMILon'      : "Unknown",
+                        'minMILon'     : "Unknown",
+                        'inspmons'     : [],
+                        'cyclemons'    : [],
+                        'DTCcount'     : "Unknown",
+                        'DTCs'         : [],
+                        # below are all ...since DTCs last cleared
+                        'warmups'      : "Unknown",
+                        'kmdriven'     : "Unknown",
+                        'minutes'      : "Unknown"
+                      }
+        }
+ 
+        # TODO: something about freeze frame...
+
 
 
     def scan_features(self):
@@ -815,53 +835,64 @@ class OBD2:
         for fpid in feature_PIDs:
             if fpid in self.suppPIDs:
 
-                supp_pid_list = decode_obd2_record( self.reader.OBD2_cmd(fpid) )
-                for pid in supp_pid_list:
-                    self.suppPIDs.append(pid)
-                self.interpret_features(fpid)
+                supp_pids = decode_obd2_record( self.reader.OBD2_cmd(fpid) )
+                for ecu in supp_pids['values'].iterkeys():
+                    if supp_pids['values'][ecu] == []:
+                        self.suppPIDs.remove(fpid)
+                    for pid in supp_pids['values'][ecu]:
+                        self.suppPIDs.append(pid)
 
         self.suppPIDs.sort()
+        #print "Supported PIDs:"
+        #pprint.pprint(self.suppPIDs)
 
 
-    def scan_info(self):
+    def scan_basic_info(self):
         """ Scan vehicle for general information. """
         # no output, just adds to self.info
+        #TODO - change to per ecu & interpret the decoded obd2 record
+
    
         # 011C - OBD standard 
-        l = decode_obd2_reply(self.reader.OBD2_cmd("011C"))
-        if len(l) > 0 :
-            self.info['OBD_std'] = l[0][1]
+        rec = decode_obd2_record( self.reader.OBD2_cmd("011C") )
+        #print "rec:"
+        #pprint.pprint( rec )
+        for ecu in rec['values'].iterkeys():
+            #pprint.pprint( rec['values'][ecu] )
+            if len(rec['values'][ecu]) == 3:
+                self.info[ecu]['OBD_std'] = rec['values'][ecu][1]
             
         # 0151 - Fuel Type
-        l = decode_obd2_reply(self.reader.OBD2_cmd("0151"))
-        if len(l) > 0 :
-            self.info['fuel_type'] = l[0][1]
+        rec = decode_obd2_record( self.reader.OBD2_cmd("0151") )
+        #print "rec:"
+        #pprint.pprint( rec )
+        for ecu in rec['values'].iterkeys():
+            #pprint.pprint( rec['values'][ecu] )
+            if len(rec['values'][ecu]) == 3:
+                self.info[ecu]['fuel_type'] = rec['values'][ecu][1]
 
         # 0902  - Vehicle Identification Number
-        l = decode_obd2_reply(self.reader.OBD2_cmd("0902"))
-        if len(l) > 0 :
-            self.info['VIN'] = l[0][1]
+        rec = decode_obd2_record( self.reader.OBD2_cmd("0902") )
+        #print "rec:"
+        #pprint.pprint( rec )
+        for ecu in rec['values'].iterkeys():
+            #pprint.pprint( rec['values'][ecu] )
+            if len(rec['values'][ecu]) == 3:
+                self.info[ecu]['VIN'] = rec['values'][ecu][1]
 
         # 0904 - Calibration ID
-        l = decode_obd2_reply(self.reader.OBD2_cmd("0904"))
-        if len(l) > 0 :
-            self.info['Calibration'] = l[0][1]
+        rec = decode_obd2_record( self.reader.OBD2_cmd("0904") )
+        #print "rec:"
+        #pprint.pprint( rec )
+        for ecu in rec['values'].iterkeys():
+            #pprint.pprint( rec['values'][ecu] )
+            if len(rec['values'][ecu]) == 3:
+                self.info[ecu]['Calibration'] = rec['values'][ecu][1]
 
         # self.info['Year']   # from VIN
         # self.info['Make']   # from VIN
         # self.info['Model']  # from VIN
 
-
-    def show_info(self):
-        """ Show general information. """
-        # just interprets self.info for CLI, GUI would directly read self.info
-        print "VIN".rjust(16),           ": ", self.info['VIN']
-        #print "Year".rjust(16),          ": ", self.info['Year']
-        #print "Manufacturer".rjust(16),  ": ", self.info['Make']
-        #print "Model".rjust(16),         ": ", self.info['Model']
-        print "Complies with".rjust(16), ": ", OBD_standards[self.info['OBD_std']]
-        print "Fuel type".rjust(16),     ": ", fuel_types[self.info['fuel_type']]
-        print "Calibration".rjust(16),   ": ", self.info['Calibration']
 
 
     ## 3 continuous and 8 non-continuous OBD monitors, plus current fuel system and 2nd air status
@@ -872,6 +903,26 @@ class OBD2:
     ## static diagnostic info: MIL, DTC count, DTCs, # of warmups since DTC, time run with MIL on, 
     ##   time run since codes cleared, dist travelled with MIL, ...
     #DTC_PIDs   =     ["0101", "0102", "0121", "0130", "0131", "0141", "014D", "014E"]
+
+    def scan_obd2_status(self):
+        """ Scan vehicle for general information. """
+        # no output, just adds to self.obd2_status
+   
+        status_PIDs = ["0101", "0121", "0130", "0131", "0141", "014D", "014E"]
+        for fpid in status_PIDs:
+            if fpid in self.suppPIDs:
+
+                status_record = decode_obd2_record( self.reader.OBD2_cmd(fpid) )
+                for ecu in status_record['values'].iterkeys():
+                    # ... interpret the pid...
+                    # 
+                    # 01 30 - # of warm-ups since codes cleared
+                    # 01 31 - Distance traveled since codes cleared (km)
+                    # 01 4E - Time since trouble codes cleared (minutes)
+                    # 01 21 - Distance traveled with MIL on (km)
+                    # 01 4D - Time run with MIL on (minutes)
+                    # 
+                    pass
 
 
     def scan_perm_diag_info(self):
@@ -946,44 +997,80 @@ class OBD2:
         print "--"
 
 
+
     def scan_curr_sensors(self):
         """ Scan vehicle for current sensor readings . """
         # one pass through the supported PIDs in mode 0x01
+
+        # populate list of pids to check
+        sensor_pids = []
         for spid in self.suppPIDs:
-            #print "supported PID:", spid
             if spid[1] == '1' and spid not in feature_PIDs and spid not in misc_diag_PIDs and spid != "0101" and spid != "0102" and spid != "0141" and spid != "011C" :
-            #if spid not in feature_PIDs and spid not in misc_diag_PIDs:
-                # debug / log
-                scantime = time.time()
-                #print scantime, "--",
-                # debug / log
-                #print "read PID:", spid, "--",
-                print spid.rjust(8), ": ",
-                result = self.reader.OBD2_cmd(spid)
-                # debug / log
-                #print "result:", result, "--",
+                sensor_pids.append(spid)
 
-                values = decode_obd2_reply(result)
-                for val in values:
-                    # debug / log
-                    #print val[0], ":", val[1], val[2]
-                    print val[0].rjust(40), ": ", str(val[1]).rjust(8), val[2]
-                if len(values) == 0:
+        # check the readings of each sensor
+        for pid in sensor_pids:
+
+            # debug / log
+            scantime = time.time()
+            #print scantime, "--",
+
+            # debug / log
+            #print "read PID:", pid, "--",
+
+
+            rec = decode_obd2_record( self.reader.OBD2_cmd(pid) )
+
+            print pid.rjust(8), ": ",
+
+            #print "rec:"
+            #pprint.pprint( rec )
+            for ecu in rec['values'].iterkeys() :
+                if len(rec['values'][ecu]) == 0:
                     print ""
+                for val in rec['values'][ecu]:
+                    if len(val) == 3:
+                        # debug / log
+                        #print val[0], ":", val[1], val[2]
+                        print val[0].rjust(40), ": ", str(val[1]).rjust(8), val[2]
+
+    
+
+    # # simulator does not have freeze frame sensors
+    # def scan_freeze_frame(self):
+    #     """ Scan vehicle for freeze-frame sensor readings . """
+    #     # one pass through the supported PIDs in mode 0x02, Freeze frame from when last DTC triggered
+    #     for spid in self.suppPIDs:
+    #         if spid[1] == '2' and spid not in feature_PIDs :
+    #             #print "diag PID:", ipid, "supported"
+    #             # debug
+    #             #print "Checking FF sensor PID:", spid, "--",
+    #             result = self.reader.OBD2_cmd(spid)
+    #             # debug
+    #             print result
 
 
-    # simulator does not have freeze frame sensors
-    def scan_freeze_frame(self):
-        """ Scan vehicle for freeze-frame sensor readings . """
-        # one pass through the supported PIDs in mode 0x02, Freeze frame from when last DTC triggered
-        for spid in self.suppPIDs:
-            if spid[1] == '2' and spid not in feature_PIDs :
-                #print "diag PID:", ipid, "supported"
-                # debug
-                #print "Checking FF sensor PID:", spid, "--",
-                result = self.reader.OBD2_cmd(spid)
-                # debug
-                print result
+    #
+    # Some sample functions to show the info stored in the object
+    #
+
+    def show_basic_info(self):
+        """ Show general information. """
+        # just interprets self.info for CLI, GUI would directly read self.info
+        print "VIN".rjust(16),           ": ", self.info['7E8']['VIN']
+        print "Year".rjust(16),          ": ", self.info['7E8']['Year']
+        print "Manufacturer".rjust(16),  ": ", self.info['7E8']['Make']
+        print "Model".rjust(16),         ": ", self.info['7E8']['Model']
+        print "Complies with".rjust(16), ": ", OBD_standards[self.info['7E8']['OBD_std']]
+        print "Fuel type".rjust(16),     ": ", fuel_types[self.info['7E8']['fuel_type']]
+        print "Calibration".rjust(16),   ": ", self.info['7E8']['Calibration']
+
+
+    def show_obd2_status(self):
+        """ Show status of obd2 monitors and related information. """
+        # just interprets self.obd2_status for CLI, GUI would directly read self.info
+        pass
+
 
 
 

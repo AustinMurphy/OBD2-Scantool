@@ -181,15 +181,21 @@ class OBD2reader:
         """Send an OBD2 PID to the vehicle, get the result, and format it into a standard record"""
         obd2_record = []
 
-        SEND_cmd(cmd)
-        record = RTRV_record()
+        self.SEND_cmd(cmd)
+        record = self.RTRV_record()
 
         # check that the ELM headers match the original cmd
-        if record[0] != cmd:
+        if record[0][0] != cmd:
             print "PANIC! - cmd is different"
+            print "cmd:", cmd, "record[0][0]:", record[0][0]
 
         # Format result into a standard OBD2 record
         obd2_record = self.triage_record( record )
+
+        if obd2_record == []:
+           obd2_record = { 'command'   : cmd ,
+                           'responses' : { '7E8' : [] }, 
+                           'timestamp' : 0  }
 
         # set timestamp 
         #obd2_record['timestamp'] = ""
@@ -211,7 +217,8 @@ class OBD2reader:
             raise self.ErrorNotConnected("Can't send OBD2 command")
         elif self.Type == "SERIAL":
             if self.Device == "ELM327":
-                self.ELM327_SEND_cmd(cmd)
+                #self.ELM327_SEND_cmd(cmd)
+                self.SERIAL_SEND_cmd(cmd)
                 # mark that there is now a record waiting to be retrieved
                 self.recwaiting = 1
             else:
@@ -241,7 +248,7 @@ class OBD2reader:
             raise self.ErrorNotConnected("Can't send OBD2 command")
         elif self.Type == "SERIAL":
             if self.Device == "ELM327":
-                record = self.SERIAL_RTRV_record(cmd)
+                record = self.SERIAL_RTRV_record()
                 self.recwaiting = 0
             else:
                 raise self.ErrorReaderNotRecognized("Unknown OBD2 Reader device")
@@ -278,7 +285,7 @@ class OBD2reader:
 
         if len(record) > 1 :
           if record[1][0] == '?' \
-          or record[1][0] == 'NO DATA':
+          or record[1][0] == 'NO':
             #print "Garbage record.  Skipping."
             return []
 
@@ -537,7 +544,7 @@ class OBD2reader:
             raise self.ErrorNotConnected("Can't retrieve reader attributes")
         else:
             if self.Device == "ELM327":
-                self.SERIAL_rtrv_attr()
+                self.ELM327_rtrv_attr()
             else:
                 raise self.ErrorReaderNotRecognized("Unknown OBD2 Reader device")
 
@@ -571,18 +578,24 @@ class OBD2reader:
     def ELM327_rtrv_attr(self):
         """ Retrieves data attributes"""
         for i in self.suppt_attr.keys():
-            self.SERIAL_SEND_cmd( self.suppt_attr[i] )
-            rec = SERIAL_RTRV_record()
-            self.attr[i] = rec[1].join(' ')
+            self.SEND_cmd( self.suppt_attr[i] )
+            time.sleep(0.1)
+            rec = self.RTRV_record()
+            # debug
+            pprint.pprint(rec)
+            #pprint.pprint(rec[1])
+            self.attr[i] = ' '.join(rec[1])
 
     # fixme
     def ELM327_reset(self):
         """ Resets device"""
         self.SEND_cmd("atz")    # reset ELM327 firmware
+        self.RTRV_record()
         #self.SEND_cmd("ate0")   # echo off
         #self.SEND_cmd("atl0")   # linefeeds off
         if self.Headers == 1:
             self.SEND_cmd("ath1")  # headers on
+            self.RTRV_record()
 
 
 
@@ -617,39 +630,65 @@ class OBD2reader:
         raw_record = []
         #  raw_record is a list of non-empty strings, 
         #  each string is a line of info from the reader
-        buf = ''
-        while len(raw_record) < 1 or self.Port.inWaiting() > 0:
+        word = ''
+        linebuf = []
+        while len(raw_record) < 1 :
             # we need to have something to reply.. 
-            while 1:
-                # read 1 char at a time 
-                #   until we get to the '>' prompt
-                c = self.Port.read(1)
-                # 
-                #  TODO: if logging==on, append c to trace file
-                # 
-                if c == '>':
-                    break
-                elif c != '\r' and c != '\n':
-                    buf = buf + c
-                elif c != '\n':
-                    if buf != '':
-                        raw_record.append(buf)
-                        buf = ''
+            #print "chars waiting:", self.Port.inWaiting()
+            #sys.stdout.flush()
+            while  self.Port.inWaiting() > 0:
+                while 1:
+                    # read 1 char at a time 
+                    #   until we get to the '>' prompt
+                    c = self.Port.read(1)
+                    # 
+                    #print c,
+                    # 
+                    #  TODO: if logging==on, append c to trace file
+                    # 
+                    # we are done once we see the prompt
+                    if c == '>':
+                        #break
+                        print "Raw Record:",
+                        pprint.pprint(raw_record)
+                        return raw_record
+                    # \n = LF - ignore
+                    elif c == '\n':
+                        pass
+                    # \r = CR - new array entry but only if there is something to add
+                    elif c == '\r':
+                        if word != '':
+                            linebuf.append(word)
+                            word = ''
+                        if linebuf != []:
+                            raw_record.append(linebuf)
+                            linebuf = []
+                    # split line into words
+                    elif c == ' ':
+                        if word != '':
+                            linebuf.append(word)
+                            word = ''
+                    # all other chars
+                    else : 
+                        word = word + c
+    
+            # wait a bit for the serial line to respond
+            #print "NO DATA TO READ!!"
             time.sleep(0.1)
 
 
-        # split each string in 1D array into a list of hexbytes, making a 2D array
-        record = []
-        for line in raw_record[1:]:
-            #print "DEBUG: LINE --", line, "--"
-            # if line has a trailing space, it adds an empty item in the hexbyte array
-            if line != 'NO DATA':
-              temp = line.rstrip().split(' ')
-              if len(temp) > 0:
-                  record.append(temp)
+        ## split each string in 1D array into a list of hexbytes, making a 2D array
+        #record = []
+        #for line in raw_record[1:]:
+            ##print "DEBUG: LINE --", line, "--"
+            ## if line has a trailing space, it adds an empty item in the hexbyte array
+            #if line != 'NO DATA':
+              #temp = line.rstrip().split(' ')
+              #if len(temp) > 0:
+                  #record.append(temp)
 
         #  2D array 
-        return record
+        #return raw_record
 
 
 

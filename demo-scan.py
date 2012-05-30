@@ -47,7 +47,7 @@ import obd2
 
 
 # debug
-#import pprint
+import pprint
 
 
 def main():
@@ -68,8 +68,8 @@ def main():
     print "Serial port attributes"
     print "----------------------"
     
-    #ser_device = '/dev/pts/7'
-    ser_device = '/dev/ttyUSB0'
+    ser_device = '/dev/pts/7'
+    #ser_device = '/dev/ttyUSB0'
     
     ser_settings = {
      'baudrate': 38400,
@@ -111,14 +111,18 @@ def main():
     # create reader object (disconnected)
     reader = obd2_reader.OBD2reader( TYPE, READER )
     reader.Port = port
+    reader.Headers = 1
     reader.connect()   # this also opens the serial port
     
     print "Device".rjust(16), ": ", str(reader.Device)
     print "State".rjust(16), ": ", str(reader.State)
+    print "Style".rjust(16), ": ", str(reader.Style)
+    print "Headers".rjust(16), ": ", str(reader.Headers)
+
     #pprint.pprint( reader.attr )
     
     for k in sorted(reader.attr.keys()):
-        print k.rjust(16), ": ", reader.attr[k][1]
+        print k.rjust(16), ": ", reader.attr[k]
 
     # TODO
     #   notice that ELM327 is not connected and throw exception
@@ -141,6 +145,8 @@ def main():
     print "Loading default DTC definitions from CSV file..."
     obd2.load_dtcs_from_csv( 'obd2_std_DTCs.csv' )
     
+    # debug
+    #reader.RTRV_record()
     print ""
     print "Scanning vehicle for supported features..."
     vehicle.scan_features()
@@ -157,8 +163,8 @@ def main():
     print " "
     print "General vehicle info"
     print "--------------------"
-    vehicle.scan_info()
-    vehicle.show_info()
+    vehicle.scan_basic_info()
+    vehicle.show_basic_info()
     print " "
     # I should fix the inconsistent use of "scan"
     
@@ -172,11 +178,11 @@ def main():
     print " "
     print " OVERALL:"
     print " "
-    vehicle.scan_perm_diag_info()
+    #vehicle.scan_perm_diag_info()
     print " "
     print " THIS DRIVE CYCLE ONLY:"
     print " "
-    vehicle.scan_cycle_diag_info()
+    #vehicle.scan_cycle_diag_info()
     print " "
     
     
