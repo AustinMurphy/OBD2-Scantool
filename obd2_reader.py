@@ -48,16 +48,20 @@ class OBD2reader:
     def __init__(self, devtype, device):
         """Initializes port by resetting device and getting supported PIDs. """
         #
-        self.Type       = devtype  # SERIAL, FILE, other?  
-        self.Device     = device   # ELM327, other?  used to determine which reader commands to send (separate from OBD2 cmds)
+        self.Type        = devtype  # SERIAL, FILE, other?  
+        self.Device      = device   # ELM327, other?  used to determine which reader commands to send (separate from OBD2 cmds)
         #
-        self.Style      = 'old'    # 'old', 'can'  used to determine how to interpret the results, gets updated by connect()
+        self.Style       = 'old'    # 'old', 'can'  used to determine how to interpret the results, gets updated by connect()
         #
-        self.State      = 0        # 1 is connected, 0 is disconnected/failed
-        self.Headers    = 0        # ECU headers, 1 is on, 0 is off
-        self.recwaiting = 0        # 0 = no record waiting (can send new cmd), 1 = record waiting to be retrieved
-        self.attr       = {}       # the list of device attributes and their values
-        self.suppt_attr = {}       # the list of supported device attributes 
+        self.State       = 0        # 1 is connected, 0 is disconnected/failed
+        self.Headers     = 0        # ECU headers, 1 is on, 0 is off
+        #
+        self.recwaiting  = 0        # 0 = no record waiting (can send new cmd), 1 = record waiting to be retrieved
+        self.attr        = {}       # the list of device attributes and their values
+        self.suppt_attr  = {}       # the list of supported device attributes 
+        #
+        self.RecordTrace = 0        # 0 = no, 1 = yes record a trace of the serial session
+        self.tf_out      = None     # file to record trace to
         #
         if self.Type == "SERIAL":
             self.Port   = None     # connect later
@@ -175,6 +179,15 @@ class OBD2reader:
             print "Tracefile not open..."
 
     # TODO - combine above 2 functions
+
+
+    def record_trace(self):
+        """Init an output trace file and record all serial IO to it for later decoding"""
+
+        tfname = str(int(time.time())) + ".obd2_reader.trace"
+        self.tf_out = open(tfname, 'a')
+        self.RecordTrace = 1
+        print "Recoding trace to:", tfname
 
 
     def OBD2_cmd(self, cmd):
@@ -640,23 +653,24 @@ class OBD2reader:
                 while 1:
                     # read 1 char at a time 
                     #   until we get to the '>' prompt
+                    # 
                     c = self.Port.read(1)
                     # 
-                    #print c,
-                    # 
-                    #  TODO: if logging==on, append c to trace file
+                    #  TODO: if logging==on, write c to trace file
+                    if self.RecordTrace == 1:
+                        self.tf_out.write(c)
                     # 
                     # we are done once we see the prompt
                     if c == '>':
                         #break
-                        print "Raw Record:",
+                        print "Raw Record: ",
                         pprint.pprint(raw_record)
                         return raw_record
-                    # \n = LF - ignore
-                    elif c == '\n':
-                        pass
+                    # \n = LF - not usually present in serial output
+                    #elif c == '\n':
+                        #pass
                     # \r = CR - new array entry but only if there is something to add
-                    elif c == '\r':
+                    elif c == '\r' or c == '\n':
                         if word != '':
                             linebuf.append(word)
                             word = ''
@@ -677,21 +691,6 @@ class OBD2reader:
             time.sleep(0.1)
 
 
-        ## split each string in 1D array into a list of hexbytes, making a 2D array
-        #record = []
-        #for line in raw_record[1:]:
-            ##print "DEBUG: LINE --", line, "--"
-            ## if line has a trailing space, it adds an empty item in the hexbyte array
-            #if line != 'NO DATA':
-              #temp = line.rstrip().split(' ')
-              #if len(temp) > 0:
-                  #record.append(temp)
-
-        #  2D array 
-        #return raw_record
-
-
-
 
     #
     #  FILE specific functions (private)
@@ -701,45 +700,53 @@ class OBD2reader:
         """ get one data record from trace. return as an array """
         eor = 0
         raw_record = []
-        record = []
+        #record = []
         #  record is a list of non-empty strings, 
         #  each string is a line of info from the reader
-        buf = ''
+        word = ''
+        linebuf = []
         while len(raw_record) < 1 and self.eof == 0 and eor == 0 :
-          # we need to have something to reply.. 
-          while 1:
-              # read 1 char at a time 
-              #   until we get to the '>' prompt
-              c = self.tf.read(1)
-              if len(c) != 1:
-                  self.eof = 1
-                  break
-              if c == '>':
-                  eor = 1
-                  break
-              elif c != '\r' and c != '\n':
-                  buf = buf + c
-              elif c == '\n':
-                  buf.rstrip()
-                  raw_record.append(buf)
-                  buf = ''
-          time.sleep(0.001)
-    
-        #  split raw_record lines on whitespace 
-        for line in raw_record:
-            l = line.rstrip()
-            #  leave "NO DATA" as-is
-            if l == 'NO DATA':
-              record.append([l])
-            #  empty lines should not be passed along
-            elif l != '':
-              temp = l.split(' ')
-              if len(temp) > 0:
-                  record.append(temp)
-    
-        # record is a 2D representation of the record from the tracefile
-        return record
-
+            # we need to have something to reply.. 
+            while 1:
+                # read 1 char at a time 
+                #   until we get to the '>' prompt
+                #
+                c = self.tf.read(1)
+                #
+                #print c,
+                #
+                if len(c) != 1:
+                    self.eof = 1
+                    #break
+                    print "Raw Record: ",
+                    pprint.pprint(raw_record)
+                    return raw_record
+                elif c == '>':
+                    eor = 1
+                    #break
+                    print "Raw Record: ",
+                    pprint.pprint(raw_record)
+                    return raw_record
+                # \r = CR , \n = LF 
+                #  (serial device uses CR + optionally LF, unix text only uses LF)
+                # - new array entry but only if there is something to add 
+                elif c == '\r' or c == '\n':
+                    if word != '':
+                        linebuf.append(word)
+                        word = ''
+                    if linebuf != []:
+                        raw_record.append(linebuf)
+                        linebuf = []
+                # split line into words
+                elif c == ' ':
+                    if word != '':
+                        linebuf.append(word)
+                        word = ''
+                # all other chars
+                else : 
+                    word = word + c
+  
+        time.sleep(0.001)
 
 
 

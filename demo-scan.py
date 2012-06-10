@@ -112,6 +112,10 @@ def main():
     reader = obd2_reader.OBD2reader( TYPE, READER )
     reader.Port = port
     reader.Headers = 1
+
+    # we want a record of what we pulled
+    reader.record_trace()
+
     reader.connect()   # this also opens the serial port
     
     print "Device".rjust(16), ": ", str(reader.Device)
@@ -144,6 +148,9 @@ def main():
     print ""
     print "Loading default DTC definitions from CSV file..."
     obd2.load_dtcs_from_csv( 'obd2_std_DTCs.csv' )
+
+
+    
     
     # debug
     #reader.RTRV_record()
@@ -176,13 +183,14 @@ def main():
     print "Scan for Diagnostic and Emmissions Monitor info"
     print "-----------------------------------------------"
     print " "
-    print " OVERALL:"
+    print "OBD2 Status BEFORE scan:"
+    pprint.pprint(vehicle.obd2status)
     print " "
-    #vehicle.scan_perm_diag_info()
+    print "Scanning for OBD2 status... "
+    vehicle.scan_obd2_status()
     print " "
-    print " THIS DRIVE CYCLE ONLY:"
-    print " "
-    #vehicle.scan_cycle_diag_info()
+    print "OBD2 Status AFTER scan:"
+    pprint.pprint(vehicle.obd2status)
     print " "
     
     
