@@ -48,20 +48,22 @@ class OBD2reader:
     def __init__(self, devtype, device):
         """Initializes port by resetting device and getting supported PIDs. """
         #
-        self.Type        = devtype  # SERIAL, FILE, other?  
-        self.Device      = device   # ELM327, other?  used to determine which reader commands to send (separate from OBD2 cmds)
+        self.Type         = devtype  # SERIAL, FILE, other?  
+        self.Device       = device   # ELM327, other?  used to determine which reader commands to send (separate from OBD2 cmds)
         #
-        self.Style       = 'old'    # 'old', 'can'  used to determine how to interpret the results, gets updated by connect()
+        self.debug        = 0        # debug level, 0 = off, higher is more...
         #
-        self.State       = 0        # 1 is connected, 0 is disconnected/failed
-        self.Headers     = 0        # ECU headers, 1 is on, 0 is off
+        self.State        = 0        # 1 is connected, 0 is disconnected/failed
+        self.recwaiting   = 0        # 0 = no record waiting (can send new cmd), 1 = record waiting to be retrieved
         #
-        self.recwaiting  = 0        # 0 = no record waiting (can send new cmd), 1 = record waiting to be retrieved
-        self.attr        = {}       # the list of device attributes and their values
-        self.suppt_attr  = {}       # the list of supported device attributes 
+        self.Style        = 'old'    # 'old', 'can'  used to determine how to interpret the results, gets updated by connect()
+        self.Headers      = 0        # ECU headers, 1 is on, 0 is off
         #
-        self.RecordTrace = 0        # 0 = no, 1 = yes record a trace of the serial session
-        self.tf_out      = None     # file to record trace to
+        self.attr         = {}       # the list of device attributes and their values
+        self.attr_cmds = {}     # the list of supported attribute at commands, and the associated attribute
+        #
+        self.RecordTrace  = 0        # 0 = no, 1 = yes record a trace of the serial session
+        self.tf_out       = None     # file to record trace to
         #
         if self.Type == "SERIAL":
             self.Port   = None     # connect later
@@ -72,13 +74,13 @@ class OBD2reader:
             pass
         #
         if self.Device == "ELM327":
-            self.suppt_attr = {
-            'Brand'   : 'at@1',
-            'Brand2'  : 'at@2',
-            'Firmware': 'ati',
-            'Proto'   : 'atdp',
-            'ProtoNum': 'atdpn',
-            'Voltage' : 'atrv'
+            self.attr_cmds = {
+            'AT@1'  :  "Brand",
+            'AT@2'  :  "Brand2",
+            'ATI'   :  "Firmware",
+            'ATDP'  :  "Proto",
+            'ATDPN' :  "ProtoNum",
+            'ATRV'  :  "Voltage",
             }
         else:
             pass
@@ -89,7 +91,7 @@ class OBD2reader:
     # 
 
 
-    # "record"     -  a 2D array, 
+    # "raw_record"     -  a 2D array, 
     #             first index is line, 
     #             second index is word, 
     #             of particular interest are the "hexbytes" returned after obd2 commands
@@ -130,8 +132,8 @@ class OBD2reader:
                     self.flush_recv_buf()
                     self.reset()
                     self.rtrv_attr()
-                    if self.attr['ProtoNum'] >= 6:
-                        self.Style = 'can'
+                    #if self.attr['ProtoNum'] >= 6:
+                    #    self.Style = 'can'
                 #except serial.SerialException as inst:
                 # self.State = 0
                 # raise inst
@@ -154,7 +156,7 @@ class OBD2reader:
                 self.State      = 1
                 self.recwaiting = 1
 
-    # TODO - combine above 2 functions, pass serial port/tracefile and (optional) settings dict to connect
+    # TODO - maybe ... - combine above 2 functions, pass serial port/tracefile and (optional) settings dict to connect
 
 
     def disconnect(self):
@@ -328,22 +330,44 @@ class OBD2reader:
 
         cmd = str.upper(record[0][0])
 
-        print "AT command:", cmd,
-        #print "response:", record[1][0]
-        print "--- response:", record[1]
-        #pprint.pprint(record)
+        if self.debug > 0 :
+            pprint.pprint(record)
+
+        if cmd in self.attr_cmds.keys():
+            attr = self.attr_cmds[cmd]
+            self.attr[ attr ] = ' '.join(record[1])
+  
+            # interpret ATDPN to set CAN vs. OLD
+            if cmd == 'ATDPN' :
+                resp = record[1][0]
+                # if it is automatically set, there is a leading A, as in "A6".  
+                #   FYI - 'A' is a valid protocol number so we can't just remove a leading A
+                pnum = int( resp[-1], 16 )
+                if self.debug > 0 :
+                    print "PNUM:", pnum,
+                if pnum >= 6:
+                    self.Style = 'can'
+                else:
+                    self.Style = 'old'
+                if self.debug > 0 :
+                    print "Style:", self.Style
+
     
-        if cmd == 'ATZ':
-          self.Headers = 0
-          print "AT: Reset reader"
+        elif cmd == 'ATZ':
+            self.Headers = 0
+            if self.debug > 0 :
+                print "AT: Reset reader"
     
-        if cmd == 'ATH0' and record[1][0] == 'OK':
-          self.Headers = 0
-          print "AT: Headers OFF"
+        elif cmd == 'ATH0' and record[1][0] == 'OK':
+            self.Headers = 0
+            if self.debug > 0 :
+                print "AT: Headers OFF"
     
-        if cmd == 'ATH1' and record[1][0] == 'OK':
-          self.Headers = 1
-          print "AT: Headers ON"
+        elif cmd == 'ATH1' and record[1][0] == 'OK':
+            self.Headers = 1
+            if self.debug > 0 :
+                print "AT: Headers ON"
+
     
         return
 
@@ -377,153 +401,150 @@ class OBD2reader:
     
     
         # 5 possibilities:  can/headers, can/no headers/multiline, can/no headers/singleline, old/headers, old/no headers
-        #print "Style:", self.Style, " - Headers:", self.Headers
+        if self.debug > 1 :
+            print "Style:", self.Style, " - Headers:", self.Headers, " - single/multiline  ??"
     
         if self.Style == 'can':
-          if self.Headers == 1:
-            # CAN headers format:  ECUID, PCIbyte, more bytes...
-            # if PCI byte starts with 0, then it is the bytecount of the single frame
-            # if PCI byte starts with 1, then it is the first frame of 2 or more, then next byte is the bytecount
-            # if PCI byte starts with 2, then it is a continuation frame, second digit of PCI byte is a sequence number
-            #    frames will never arrive more than 16 frames out of sequence so the single sequence hexdigit is sufficient
-            # if message is 16 frames or less, just sort on the seq #
-            # if message is longer than 16 frames, ugh... more complicated sort needed
+            if self.Headers == 1:
+                # CAN headers format:  ECUID, PCIbyte, more bytes...
+                # if PCI byte starts with 0, then it is the bytecount of the single frame
+                # if PCI byte starts with 1, then it is the first frame of 2 or more, then next byte is the bytecount
+                # if PCI byte starts with 2, then it is a continuation frame, second digit of PCI byte is a sequence number
+                #    frames will never arrive more than 16 frames out of sequence so the single sequence hexdigit is sufficient
+                # if message is 16 frames or less, just sort on the seq #
+                # if message is longer than 16 frames, ugh... more complicated sort needed
+        
+                lines = sorted(record[1:])
+                # this is effective for up to 16 lines per ECU ID, past that the sort will be silly
+                if self.debug > 1 :
+                    print "CAN w/H, lines:"
+                    pprint.pprint(lines)
+        
+                linenum = 1
+                # first element of each line is the ECU ID
+                for line in lines:
+                    if linenum > 16 :
+                        print "Oops.  Too many CAN Frames in this message."
+                        break
+                    linenum += 1
+                    ecu = line[0]
+                    if ecu not in ecuids:
+                        #print "New ECU"
+                        ecuids[ecu] = {}
+                        ecuids[ecu]['data'] = []
+                        ecuids[ecu]['count'] = 0
+                    # PCI byte
+                    pci1 = line[1][0]
+                    pci2 = line[1][1]
+          
+                    if pci1 == '0':
+                        # single line of data
+                        ecuids[ecu]['count'] = pci2
+                        for b in line[2:]:
+                            if len(ecuids[ecu]['data']) < ecuids[ecu]['count']:
+                                ecuids[ecu]['data'].append(b)
+                    elif pci1 == '1':
+                        # first of multiple lines, next byte is the bytecount
+                        datacount = line[2]
+                        ecuids[ecu]['count'] = int(datacount, 16)
+                        for b in line[3:]:
+                            ecuids[ecu]['data'].append(b)
+                    elif pci1 == '2':
+                        # 2nd or later of multiple lines, just data
+                        for b in line[2:]:
+                            if len(ecuids[ecu]['data']) < ecuids[ecu]['count']:
+                                ecuids[ecu]['data'].append(b)
+          
     
-            lines = sorted(record[1:])
-            # this is effective for up to 16 lines per ECU ID, past that the sort will be silly
-            #print "CAN w/H, lines:"
-            #pprint.pprint(lines)
     
-            linenum = 1
-            # first element of each line is the ECU ID
-            for line in lines:
-              if linenum > 16 :
-                print "Oops.  Too many CAN Frames in this message."
-                break
-              linenum += 1
-              ecu = line[0]
-              if ecu not in ecuids:
-                #print "New ECU"
+            # CAN / no headers 
+            elif self.Headers == 0:
+                if self.debug > 1 :
+                    pprint.pprint(record)
+                # Since there are no headers, we will assume everything was from '7E8'
+                ecu = '7E8'
                 ecuids[ecu] = {}
-                ecuids[ecu]['data'] = []
                 ecuids[ecu]['count'] = 0
-              # PCI byte
-              pci1 = line[1][0]
-              pci2 = line[1][1]
+                ecuids[ecu]['data'] = []
+        
+                # multiline CAN (no headers)
+                #   byte count on the first line, then each following line has a line num at the front
+                if len(record) > 2 and len(record[1]) == 1 and len(record[1][0]) == 3:
+                    ecuids[ecu]['count'] = int(record[1][0], 16)
+                    print "count:", ecuids[ecu]['count']
+          
+                    # strip the line numbers & any padding at the end
+                    #pprint.pprint(record[2:])
+                    for l in record[2:] :
+                        if len(l) == 1:
+                            # this can't handle out-of-order data, but will deal with multi-ecus
+                            ecu += 'X'
+                            ecuids[ecu] = {}
+                            ecuids[ecu]['data'] = []
+                            ecuids[ecu]['count'] = l[0]
+                            continue
+        
+                        for d in l[1:] :
+                            if len(ecuids[ecu]['data']) < ecuids[ecu]['count'] :
+                                ecuids[ecu]['data'].append(d)
+        
+                # singleline CAN (no headers)
+                else :
+                    for l in record[1:] :
+                      if ecu not in ecuids:
+                          #print "New ECU"
+                          ecuids[ecu] = {}
+                          ecuids[ecu]['data'] = []
+                          ecuids[ecu]['count'] = 0
+                      for d in l :
+                          ecuids[ecu]['data'].append(d)
+                      ecuids[ecu]['count'] = len(ecuids[ecu]['data'])
+                      # fake ECU name for extra data
+                      ecu += 'X'
+        
     
-              if pci1 == '0':
-                # single line of data
-                ecuids[ecu]['count'] = pci2
-                for b in line[2:]:
-                  if len(ecuids[ecu]['data']) < ecuids[ecu]['count']:
-                    ecuids[ecu]['data'].append(b)
-              elif pci1 == '1':
-                # first of multiple lines, next byte is the bytecount
-                datacount = line[2]
-                ecuids[ecu]['count'] = int(datacount, 16)
-                for b in line[3:]:
-                  ecuids[ecu]['data'].append(b)
-              elif pci1 == '2':
-                # 2nd or later of multiple lines, just data
-                for b in line[2:]:
-                  if len(ecuids[ecu]['data']) < ecuids[ecu]['count']:
-                    ecuids[ecu]['data'].append(b)
-    
-            # CAN / with headers
-            #obd2_record['results'] = ecuids
-            #print "CAN w/Headers, ecuids:"
-            #pprint.pprint(ecuids)
-    
-    
-          # CAN / no headers 
-          elif self.Headers == 0:
-            #pprint.pprint(record)
-            # Since there are no headers, we will assume everything was from '7E8'
-            ecu = '7E8'
-            ecuids[ecu] = {}
-            ecuids[ecu]['count'] = 0
-            ecuids[ecu]['data'] = []
-    
-            # multiline CAN (no headers)
-            #   byte count on the first line, then each following line has a line num at the front
-            if len(record) > 2 and len(record[1]) == 1 and len(record[1][0]) == 3:
-              ecuids[ecu]['count'] = int(record[1][0], 16)
-              print "count:", ecuids[ecu]['count']
-    
-              # strip the line numbers & any padding at the end
-              #pprint.pprint(record[2:])
-              for l in record[2:] :
-                  if len(l) == 1:
-                    # this can't handle out-of-order data, but will deal with multi-ecus
-                    ecu += 'X'
-                    ecuids[ecu] = {}
-                    ecuids[ecu]['data'] = []
-                    ecuids[ecu]['count'] = l[0]
-                    continue
-    
-                  for d in l[1:] :
-                     if len(ecuids[ecu]['data']) < ecuids[ecu]['count'] :
-                         ecuids[ecu]['data'].append(d)
-    
-            # singleline CAN (no headers)
-            else :
-              for l in record[1:] :
-                if ecu not in ecuids:
-                  #print "New ECU"
-                  ecuids[ecu] = {}
-                  ecuids[ecu]['data'] = []
-                  ecuids[ecu]['count'] = 0
-                for d in l :
-                  ecuids[ecu]['data'].append(d)
-                ecuids[ecu]['count'] = len(ecuids[ecu]['data'])
-                # fake ECU name for extra data
-                ecu += 'X'
-    
-    
-            # CAN / no headers
-            #pprint.pprint(ecuids)
     
     
         # TODO
         elif self.Style == 'old':
-          #print "OLD Style -- ISO/PWM/VPW .."
-    
-          if self.Headers == 1:
-            # no trace of this to test
-            #pprint.pprint(record)
-            pass
-    
-          elif self.Headers == 0:
-            #print "cmd:", cmd
-            #pprint.pprint(record)
-
-            # Since there are no headers, we will assume everything was from '7E8'
-            ecu = '7E8'
-            ecuids[ecu] = {}
-            ecuids[ecu]['count'] = 0
-            ecuids[ecu]['data'] = []
-           
-            # singleline vs multiline (with line #'s)
-            lines = sorted(record[1:])
-
-            #print "DEBUG ---- LINES:"
-            #pprint.pprint(lines)
-
-            if len(lines) > 1 :
-                # multiline 
-                # 0: mode, 1: pid, 2: linenum, 3-n: data
-                # add mode & pid once, skip linenums, concat data
-                ecuids[ecu]['data'].extend(lines[0][0:2])
-                for l in lines:
-                    ecuids[ecu]['data'].extend(l[3:])
-            elif len(lines) == 1 :
-                # singleline
-                ecuids[ecu]['data'] = lines[0]
-            else:
-                # ERROR !
-                #print "ERROR, data record too short:"
+            #print "OLD Style -- ISO/PWM/VPW .."
+      
+            if self.Headers == 1:
+                # no trace of this to test
                 #pprint.pprint(record)
-                raise self.ErrorIncompleteRecord("ERROR - Incomplete Response Record")
+                pass
+      
+            elif self.Headers == 0:
+                #print "cmd:", cmd
+                #pprint.pprint(record)
+    
+                # Since there are no headers, we will assume everything was from '7E8'
+                ecu = '7E8'
+                ecuids[ecu] = {}
+                ecuids[ecu]['count'] = 0
+                ecuids[ecu]['data'] = []
+               
+                # singleline vs multiline (with line #'s)
+                lines = sorted(record[1:])
+    
+                #print "DEBUG ---- LINES:"
+                #pprint.pprint(lines)
+    
+                if len(lines) > 1 :
+                    # multiline 
+                    # 0: mode, 1: pid, 2: linenum, 3-n: data
+                    # add mode & pid once, skip linenums, concat data
+                    ecuids[ecu]['data'].extend(lines[0][0:2])
+                    for l in lines:
+                        ecuids[ecu]['data'].extend(l[3:])
+                elif len(lines) == 1 :
+                    # singleline
+                    ecuids[ecu]['data'] = lines[0]
+                else:
+                    # ERROR !
+                    #print "ERROR, data record too short:"
+                    #pprint.pprint(record)
+                    raise self.ErrorIncompleteRecord("ERROR - Incomplete Response Record")
 
 
         for e in ecuids.iterkeys():
@@ -546,8 +567,9 @@ class OBD2reader:
         """ Clears data attributes"""
         # data attributes that should get filled in when reader is working
         self.attr = {}
-        for i in self.suppt_attr.keys():
-            self.attr[i] = "Unknown"
+        #for i in self.suppt_attr.keys():
+        for k in self.attr_cmds.keys():
+            self.attr[ self.attr_cmds[k] ] = "Unknown"
 
     # fixme - consider SERIAL vs. FILE
     def rtrv_attr(self):
@@ -587,28 +609,23 @@ class OBD2reader:
     #  ELM327 specific functions (private)
     #
 
-    # TODO - move the interpretation of these responses to interpret_at_cmd()
     def ELM327_rtrv_attr(self):
         """ Retrieves data attributes"""
-        for i in self.suppt_attr.keys():
-            self.SEND_cmd( self.suppt_attr[i] )
+        #for i in self.suppt_attr.keys():
+        for k in self.attr_cmds.keys():
+            self.SEND_cmd( k )
             time.sleep(0.1)
-            rec = self.RTRV_record()
-            # debug
-            pprint.pprint(rec)
-            #pprint.pprint(rec[1])
-            self.attr[i] = ' '.join(rec[1])
+            self.interpret_at_cmd( self.RTRV_record() )
 
-    # fixme
+
     def ELM327_reset(self):
         """ Resets device"""
         self.SEND_cmd("atz")    # reset ELM327 firmware
-        self.RTRV_record()
-        #self.SEND_cmd("ate0")   # echo off
-        #self.SEND_cmd("atl0")   # linefeeds off
+        self.interpret_at_cmd( self.RTRV_record() )
+
         if self.Headers == 1:
             self.SEND_cmd("ath1")  # headers on
-            self.RTRV_record()
+            self.interpret_at_cmd( self.RTRV_record() )
 
 
 
@@ -656,20 +673,18 @@ class OBD2reader:
                     # 
                     c = self.Port.read(1)
                     # 
-                    #  TODO: if logging==on, write c to trace file
                     if self.RecordTrace == 1:
                         self.tf_out.write(c)
                     # 
                     # we are done once we see the prompt
                     if c == '>':
-                        #break
-                        print "Raw Record: ",
-                        pprint.pprint(raw_record)
+                        if self.debug > 1 :
+                            print "Raw Record: ",
+                            pprint.pprint(raw_record)
                         return raw_record
-                    # \n = LF - not usually present in serial output
-                    #elif c == '\n':
-                        #pass
-                    # \r = CR - new array entry but only if there is something to add
+                    # \r = CR , \n = LF 
+                    #  (serial device uses CR + optionally LF, unix text only uses LF)
+                    # new array entry but only if there is something to add
                     elif c == '\r' or c == '\n':
                         if word != '':
                             linebuf.append(word)
@@ -687,7 +702,8 @@ class OBD2reader:
                         word = word + c
     
             # wait a bit for the serial line to respond
-            #print "NO DATA TO READ!!"
+            if self.debug > 1 :
+                print "NO DATA TO READ!!"
             time.sleep(0.1)
 
 
@@ -717,15 +733,15 @@ class OBD2reader:
                 #
                 if len(c) != 1:
                     self.eof = 1
-                    #break
-                    print "Raw Record: ",
-                    pprint.pprint(raw_record)
+                    if self.debug > 1 :
+                        print "Raw Record: ",
+                        pprint.pprint(raw_record)
                     return raw_record
                 elif c == '>':
                     eor = 1
-                    #break
-                    print "Raw Record: ",
-                    pprint.pprint(raw_record)
+                    if self.debug > 1 :
+                        print "Raw Record: ",
+                        pprint.pprint(raw_record)
                     return raw_record
                 # \r = CR , \n = LF 
                 #  (serial device uses CR + optionally LF, unix text only uses LF)

@@ -795,7 +795,7 @@ def decode_DTCs( data ) :
 
 
 
-
+# TODO - rename this OBD2_vehicle, maybe split into a separate file 
 class OBD2:
     """ OBD2 abstracts communication with OBD-II vehicle."""
     def __init__(self,reader):
@@ -814,10 +814,10 @@ class OBD2:
                         'OBD_std'      : '00',
                         'fuel_type'    : '00',
                         'VIN'          : "Unknown",
-                        'Calibration'  : "Unknown",
-                        'Year'         : "Unknown",
-                        'Make'         : "Unknown",
-                        'Model'        : "Unknown"
+                        'Calibration'  : "Unknown"
+                        # 'Year'         : "Unknown",
+                        # 'Make'         : "Unknown",
+                        # 'Model'        : "Unknown"
                       }
         }
 
@@ -843,6 +843,8 @@ class OBD2:
  
         # TODO: something about freeze frame...
 
+        # BIG data structure to store all scan info
+        self.all_readings = { }
 
 
     def scan_features(self):
@@ -856,7 +858,8 @@ class OBD2:
                     if supp_pids['values'][ecu] == []:
                         self.suppPIDs.remove(fpid)
                     for pid in supp_pids['values'][ecu]:
-                        self.suppPIDs.append(pid)
+                        if pid not in self.suppPIDs :
+                            self.suppPIDs.append(pid)
 
         self.suppPIDs.sort()
         #print "Supported PIDs:"
@@ -867,8 +870,6 @@ class OBD2:
         """ Scan vehicle for general information. """
         # no output, just adds to self.info
 
-        #info_PIDs = ["011C", "0151", "0902", "0904"]
-   
         for pid in info_PIDs:
             if pid in self.suppPIDs:
                 rec = decode_obd2_record( self.reader.OBD2_cmd(pid) )
@@ -876,41 +877,6 @@ class OBD2:
                 #pprint.pprint(rec)
                 self.store_info(rec)
 
-#        # 011C - OBD standard 
-#        rec = decode_obd2_record( self.reader.OBD2_cmd("011C") )
-#        #print "rec:"
-#        #pprint.pprint( rec )
-#        for ecu in rec['values'].iterkeys():
-#            #pprint.pprint( rec['values'][ecu] )
-#            if len(rec['values'][ecu]) == 3:
-#                self.info[ecu]['OBD_std'] = rec['values'][ecu][1]
-#            
-#        # 0151 - Fuel Type
-#        rec = decode_obd2_record( self.reader.OBD2_cmd("0151") )
-#        #print "rec:"
-#        #pprint.pprint( rec )
-#        for ecu in rec['values'].iterkeys():
-#            #pprint.pprint( rec['values'][ecu] )
-#            if len(rec['values'][ecu]) == 3:
-#                self.info[ecu]['fuel_type'] = rec['values'][ecu][1]
-#
-#        # 0902  - Vehicle Identification Number
-#        rec = decode_obd2_record( self.reader.OBD2_cmd("0902") )
-#        #print "rec:"
-#        #pprint.pprint( rec )
-#        for ecu in rec['values'].iterkeys():
-#            #pprint.pprint( rec['values'][ecu] )
-#            if len(rec['values'][ecu]) == 3:
-#                self.info[ecu]['VIN'] = rec['values'][ecu][1]
-#
-#        # 0904 - Calibration ID
-#        rec = decode_obd2_record( self.reader.OBD2_cmd("0904") )
-#        #print "rec:"
-#        #pprint.pprint( rec )
-#        for ecu in rec['values'].iterkeys():
-#            #pprint.pprint( rec['values'][ecu] )
-#            if len(rec['values'][ecu]) == 3:
-#                self.info[ecu]['Calibration'] = rec['values'][ecu][1]
 
         # self.info['Year']   # from VIN
         # self.info['Make']   # from VIN
@@ -949,8 +915,8 @@ class OBD2:
 
         if pid in info_PIDs:
             for ecu in rec['values'].iterkeys():
-                if len(rec['values'][ecu]) == 3:
-                    self.info[ecu][ pidmap[pid] ] = rec['values'][ecu][1]
+                if len(rec['values'][ecu][0]) == 3:
+                    self.info[ecu][ pidmap[pid] ] = rec['values'][ecu][0][1]
 
         if pid in status_PIDs:
             for ecu in rec['values'].iterkeys():
@@ -959,42 +925,39 @@ class OBD2:
                     self.obd2status[ecu]['scantime'] = rec['timestamp']
                     vals = rec['values'][ecu]
                     for v in vals:
-                        pprint.pprint(v)
-                        print "hmmm"
+                        if v[0] == 'MIL':
+                            self.obd2status[ecu]['MIL'] = v[1]
+                        elif v[0] == 'DTC count':
+                            self.obd2status[ecu]['DTCcount'] = v[1]
+                        elif v[0] == 'CONTINUOUS MONITOR':
+                            self.obd2status[ecu]['inspmons'].append(v)
+                        elif v[0] == 'NON-CONTINUOUS MONITOR':
+                            self.obd2status[ecu]['inspmons'].append(v)
                 # 01 41 - lots of info...
                 elif pid == "0141" :
                     self.obd2status[ecu]['scantime'] = rec['timestamp']
                     vals = rec['values'][ecu]
                     for v in vals:
-                        pprint.pprint(v)
-                        print "hmmm"
+                        if v[0] == 'CONTINUOUS MONITOR':
+                            self.obd2status[ecu]['cyclemons'].append(v)
+                        elif v[0] == 'NON-CONTINUOUS MONITOR':
+                            self.obd2status[ecu]['cyclemons'].append(v)
                 # normalish
                 else :
                     if len(rec['values'][ecu][0]) == 3:
                         self.obd2status[ecu][ pidmap[pid] ] = rec['values'][ecu][0][1]
-
-#                # 01 21 - Distance traveled with MIL on (km)
-#                elif pid == "0121" :
-#                    if len(rec['values'][ecu][0]) == 3:
-#                        self.obd2status[ecu]['kmMILon'] = rec['values'][ecu][0][1]
-#                # 01 30 - # of warm-ups since codes cleared
-#                elif pid == "0130" :
-#                    if len(rec['values'][ecu][0]) == 3:
-#                        self.obd2status[ecu]['warmups'] = rec['values'][ecu][0][1]
-#                # 01 31 - Distance traveled since codes cleared (km)
-#                elif pid == "0131" :
-#                    if len(rec['values'][ecu][0]) == 3:
-#                        self.obd2status[ecu]['kmdriven'] = rec['values'][ecu][0][1]
-#                # 01 4D - Time run with MIL on (minutes)
-#                elif pid == "014D" :
-#                    if len(rec['values'][ecu][0]) == 3:
-#                        self.obd2status[ecu]['minMILon'] = rec['values'][ecu][0][1]
-#                # 01 4E - Time since trouble codes cleared (minutes)
-#                elif pid == "014E" :
-#                    if len(rec['values'][ecu][0]) == 3:
-#                        self.obd2status[ecu]['minutes'] = rec['values'][ecu][0][1]
-#                # 
-#                pass
+       
+        if pid == '03':
+            # TODO - add list of DTCs to self.obd2status[ecu]['DTCs']
+            pass
+       
+        if pid == '04':
+            # no data, just skip
+            pass
+       
+        # TODO - other types of pids - save all data for later display by tui/gui
+        else:
+            pass
 
 
 

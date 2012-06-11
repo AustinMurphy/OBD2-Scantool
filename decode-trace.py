@@ -3,7 +3,7 @@
 #
 # decode-trace.py  
 #
-# Copyright 2011 Austin Murphy (austin.murphy@gmail.com)
+# Copyright 2011-2012 Austin Murphy (austin.murphy@gmail.com)
 #
 # This file is part of OBD2 Scantool.
 #
@@ -49,6 +49,12 @@ headers = 0
 #style = 'old'
 style = 'can'
     
+# 0=off, 
+# 1+ - show raw & decoded records
+# 2+ - show record as triaged
+debug = 0
+
+
 
 def main():
     """ Decode a tracefile """
@@ -89,6 +95,8 @@ def main():
     
     # create reader object (disconnected)
     reader = obd2_reader.OBD2reader( TYPE, READER )
+    
+    reader.debug = debug
 
     # open tracefile
     reader.open_trace(tracefile)
@@ -100,27 +108,80 @@ def main():
     #reader.Headers = 0
 
 
+    vehicle = obd2.OBD2( reader )
+
+
     print ""
     print "Reading from tracefile..."
     print ""
 
     while 1:
-        print "-----------------------------------"
         record = reader.RTRV_record()
-        #pprint.pprint(record)
+        if debug > 0:
+            print "-----------------------------------"
+            print "Raw Record: ",
+            pprint.pprint(record)
+
         obd2_record = reader.triage_record( record )
         if obd2_record == []:
             # then this must have been something other than an obd2_record, nothing to do
             pass
         else:
-            # do something with the obd2_record
-            pprint.pprint(obd2_record)
-            print "--"
-            pprint.pprint( obd2.decode_obd2_record( obd2_record) )
+            if debug > 1:
+                print "--"
+                print "Triaged Record: ",
+                pprint.pprint(obd2_record)
+                print "--"
+
+            dec_rec =  obd2.decode_obd2_record( obd2_record )
+            if debug > 0 :
+                print "--"
+                print "Decoded Record: ",
+                pprint.pprint( dec_rec )
+
+            # do something with the decoded obd2_record
+            vehicle.store_info( dec_rec )
 
         if reader.eof == 1:
             break
 
+
+    print "-----------------------------------"
+    print ""
+    print ""
+    print "Reader Attributes:"
+    print "------------------"
+    pprint.pprint( reader.attr )
+    print ""
+
+    #
+    print "Reader State:"
+    print "-------------"
+    print "      Type:", reader.Type         
+    print "    Device:", reader.Device       
+    print "     debug:", reader.debug        
+    print "     State:", reader.State        
+    #print "recwaiting", reader.recwaiting   
+    print "     Style:", reader.Style        
+    print "   Headers:", reader.Headers      
+    #reader.attr         
+    #print reader.attr_cmds 
+    print "    Trace?:", reader.RecordTrace  
+    print "Trace file:", reader.tf_out
+    #
+
+
+
+    print ""
+    print "Vehicle Basic Info:"
+    print "-------------------"
+    pprint.pprint( vehicle.info )
+    print ""
+    print ""
+    print "Vehicle OBD2 Status:"
+    print "--------------------"
+    pprint.pprint( vehicle.obd2status )
+    print ""
     print "-----------------------------------"
     print "END"
 
