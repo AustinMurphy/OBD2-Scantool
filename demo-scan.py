@@ -183,13 +183,13 @@ def main():
     print "Scan for Diagnostic and Emmissions Monitor info"
     print "-----------------------------------------------"
     print " "
-    print "OBD2 Status BEFORE scan:"
-    pprint.pprint(vehicle.obd2status)
-    print " "
-    print "Scanning for OBD2 status... "
+    #print "OBD2 Status BEFORE scan:"
+    #pprint.pprint(vehicle.obd2status)
+    #print " "
+    #print "Scanning for OBD2 status... "
     vehicle.scan_obd2_status()
     print " "
-    print "OBD2 Status AFTER scan:"
+    #print "OBD2 Status AFTER scan:"
     pprint.pprint(vehicle.obd2status)
     print " "
     
@@ -201,8 +201,18 @@ def main():
     print "Scan for Current Sensor Readings"
     print "--------------------------------"
     print " "
-    vehicle.scan_curr_sensors()
+    #vehicle.scan_curr_sensors()
+    sensors = vehicle.curr_sensors()
+    for pid in sensors:
+        vehicle.scan_pid( pid )
+        vehicle.show_last_reading( pid )
     print " "
+    for pid in sensors:
+        vehicle.scan_pid( pid )
+        vehicle.show_last_reading( pid )
+    print " "
+    print " RAW Data structure:"
+    pprint.pprint( vehicle.sensor_readings )
     
     
     

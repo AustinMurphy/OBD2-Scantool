@@ -917,7 +917,7 @@ class OBD2:
         for ecu in rec['values'].iterkeys():
 
             if pid in info_PIDs:
-                if len(rec['values'][ecu][0]) == 3:
+                if 0 in rec['values'][ecu] and len(rec['values'][ecu][0]) == 3:
                     self.info[ecu][ pidmap[pid] ] = rec['values'][ecu][0][1]
 
             elif pid in status_PIDs:
@@ -973,116 +973,72 @@ class OBD2:
                 
 
 
-    # delete me
-    def scan_perm_diag_info(self):
-        """ Scan vehicle for status of MIL, PERMANENT emmissions monitors, and PERMANENT DTCs. """
-        # 
-        #  PID 0101 (monitors, MIL, DTC count) is mandatory
-        #  PID 03 (list of DTCs) is mandatory
-        # 
-        print "PERMANENT Emmissions monitors:"
-        result = self.reader.OBD2_cmd("0101")
-        values = decode_obd2_reply(result)
-        for val in values:
-            # set self.MIL & DTC count
-            if val[0] == "MIL":
-                self.MIL = val[1]
-            if val[0] == "DTC count":
-                self.DTCcount = val[1]
-            # debug / log
-            print val[0].rjust(16), ":", str(val[1]).rjust(32), val[2]
-        print "--"
-        # 
-        print "Current PERMANENT Diagnostic Status Codes:"
-        result = self.reader.OBD2_cmd("03")
-        values = decode_obd2_reply(result)
-        for val in values:
-            # debug / log
-            print val[0].rjust(16), ":", str(val[1]).rjust(32), val[2]
-        print "--"
-        # 
-        print "Related information:"
-        for dpid in misc_diag_PIDs :
-            if dpid in self.suppPIDs :
-                # debug / log
-                scantime = time.time()
-                #print scantime, "--",
-                # debug / log
-                #print "read PID:", dpid, "--",
-                print dpid.rjust(8), ":",
-                result = self.reader.OBD2_cmd(dpid)
-                # debug / log
-                #print "result:", result, "--",
 
-                values = decode_obd2_reply(result)
-                for val in values:
-                    # debug / log
-                    print val[0].rjust(40), ":", str(val[1]).rjust(8), val[2]
-                if len(values) == 0:
-                    print ""
-        print "--"
-
-    # delete me
-    def scan_cycle_diag_info(self):
-        """ Scan vehicle for status of DRIVE CYCLE emmissions monitors and DTCs. """
-        # 
-        #  PID 0141 (DC monitors) 
-        #  PID 07 (list of DC DTCs)
-        # 
-        print "DRIVE CYCLE Emmissions monitors:"
-        result = self.reader.OBD2_cmd("0141")
-        values = decode_obd2_reply(result)
-        for val in values:
-            # debug / log
-            print val[0].rjust(16), ":", str(val[1]).rjust(32), val[2]
-        print "--"
-        # 
-        print "Current DRIVE CYCLE Diagnostic Status Codes:"
-        result = self.reader.OBD2_cmd("07")
-        values = decode_obd2_reply(result)
-        for val in values:
-            # debug / log
-            print val[0].rjust(16), ":", str(val[1]).rjust(32), val[2]
-        print "--"
-
-
-
-    def scan_curr_sensors(self):
+    def curr_sensors(self):
         """ Scan vehicle for current sensor readings . """
         # one pass through the supported PIDs in mode 0x01
 
         # populate list of pids to check
         sensor_pids = []
         for spid in self.suppPIDs:
-            if spid[1] == '1' and spid not in feature_PIDs and spid not in misc_diag_PIDs and spid != "0101" and spid != "0102" and spid != "0141" and spid != "011C" :
+            if spid[1] == '1' and spid not in feature_PIDs and spid not in info_PIDs and spid not in status_PIDs :
                 sensor_pids.append(spid)
 
+        return sensor_pids
+
+
+    def scan_pid(self, pid):
+        """ Scan vehicle for sensor readings using the given pids. """
+        # one pass through the supported PIDs in mode 0x01
         # check the readings of each sensor
-        for pid in sensor_pids:
 
-            # debug / log
-            scantime = time.time()
-            #print scantime, "--",
+        dec_rec = decode_obd2_record( self.reader.OBD2_cmd(pid) )
+        self.store_info( dec_rec )
 
-            # debug / log
-            #print "read PID:", pid, "--",
+        #self.show_last_reading( pid )
 
 
-            rec = decode_obd2_record( self.reader.OBD2_cmd(pid) )
 
-            print pid.rjust(8), ": ",
+    def scan_pid_list(self, pidlist):
+        """ Scan vehicle for sensor readings using the given pids. """
+        # one pass through the supported PIDs in mode 0x01
+        # check the readings of each sensor
 
-            #print "rec:"
-            #pprint.pprint( rec )
-            for ecu in rec['values'].iterkeys() :
-                if len(rec['values'][ecu]) == 0:
-                    print ""
-                for val in rec['values'][ecu]:
-                    if len(val) == 3:
-                        # debug / log
-                        #print val[0], ":", val[1], val[2]
-                        print val[0].rjust(40), ": ", str(val[1]).rjust(8), val[2]
+        for pid in pidlist:
 
+            self.scan_pid( pid )
+
+            #scantime = time.time()
+
+            #dec_rec = decode_obd2_record( self.reader.OBD2_cmd(pid) )
+            #self.store_info( dec_rec )
+
+            # probably don't want this...
+            self.show_last_reading( pid )
+
+
+
+
+    def show_last_reading(self, pid):
+        """ Display the most recent reading for a given sensor. """
+        
+        # column widths
+        c1 = 40
+        c2 = 8
+
+        for ecu in self.sensor_readings :
+            mts = max( self.sensor_readings[ecu][pid] ) 
+            print ecu, "-", pid, "-", mts, ":",
+            vals = 0
+            if len(self.sensor_readings[ecu][pid][mts]) == 0:
+                print ""
+            for val in self.sensor_readings[ecu][pid][mts] :
+                if vals > 0:
+                    print "                        ",
+                vals += 1
+                if len(val) == 3:
+                    # debug / log
+                    print val[0].rjust( c1 ), ": ", str(val[1]).rjust( c2 ), val[2]
     
 
     # # simulator does not have freeze frame sensors

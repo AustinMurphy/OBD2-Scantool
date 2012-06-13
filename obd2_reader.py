@@ -213,7 +213,8 @@ class OBD2reader:
                            'timestamp' : 0  }
 
         # set timestamp 
-        #obd2_record['timestamp'] = ""
+        #scantime = time.time()
+        obd2_record['timestamp'] = str(int(time.time()))
 
         return obd2_record
 
