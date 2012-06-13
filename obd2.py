@@ -814,10 +814,10 @@ class OBD2:
                         'OBD_std'      : '00',
                         'fuel_type'    : '00',
                         'VIN'          : "Unknown",
-                        'Calibration'  : "Unknown"
-                        # 'Year'         : "Unknown",
-                        # 'Make'         : "Unknown",
-                        # 'Model'        : "Unknown"
+                        'Calibration'  : "Unknown",
+                        'Year'         : "Unknown",
+                        'Make'         : "Unknown",
+                        'Model'        : "Unknown"
                       }
         }
 
@@ -838,13 +838,14 @@ class OBD2:
                         'warmups'      : "Unknown",
                         'kmdriven'     : "Unknown",
                         'minutes'      : "Unknown"
-                      }
+                     }
         }
  
-        # TODO: something about freeze frame...
-
         # BIG data structure to store all scan info
-        self.all_readings = { }
+        # self.sensor_readings --> ECU --> PID--> scantime--> list of values
+        self.sensor_readings = { }
+
+        # TODO: something about freeze frame...
 
 
     def scan_features(self):
@@ -876,7 +877,6 @@ class OBD2:
                 #print "Decoded: ",
                 #pprint.pprint(rec)
                 self.store_info(rec)
-
 
         # self.info['Year']   # from VIN
         # self.info['Make']   # from VIN
@@ -912,14 +912,15 @@ class OBD2:
         """Take a decoded record and store the relevant info in the OBD2 vehicle object."""
      
         pid = rec['command']
+        ts = rec['timestamp']
 
-        if pid in info_PIDs:
-            for ecu in rec['values'].iterkeys():
+        for ecu in rec['values'].iterkeys():
+
+            if pid in info_PIDs:
                 if len(rec['values'][ecu][0]) == 3:
                     self.info[ecu][ pidmap[pid] ] = rec['values'][ecu][0][1]
 
-        if pid in status_PIDs:
-            for ecu in rec['values'].iterkeys():
+            elif pid in status_PIDs:
                 # 01 01 - lots of info...
                 if pid == "0101" :
                     self.obd2status[ecu]['scantime'] = rec['timestamp']
@@ -947,20 +948,32 @@ class OBD2:
                     if len(rec['values'][ecu][0]) == 3:
                         self.obd2status[ecu][ pidmap[pid] ] = rec['values'][ecu][0][1]
        
-        if pid == '03':
-            # TODO - add list of DTCs to self.obd2status[ecu]['DTCs']
-            pass
+            elif pid == '03':
+                # TODO - add list of DTCs to self.obd2status[ecu]['DTCs']
+                pass
        
-        if pid == '04':
-            # no data, just skip
-            pass
+            elif pid == '04':
+                # no data, just skip
+                pass
        
-        # TODO - other types of pids - save all data for later display by tui/gui
-        else:
-            pass
+            # save all data for later display by tui/gui
+            # self.sensor_readings --> ECU --> PID--> scantime--> list of values
+            if not ecu in self.sensor_readings:
+                self.sensor_readings[ecu] = {}
+            if not pid in self.sensor_readings[ecu]:
+                self.sensor_readings[ecu][pid] = {}
+            if not ts in self.sensor_readings[ecu][pid]:
+                self.sensor_readings[ecu][pid][ts] = []
+                self.sensor_readings[ecu][pid][ts].extend( rec['values'][ecu] )
+            else:
+                while ts in self.sensor_readings[ecu][pid] :
+                    ts += "0"
+                self.sensor_readings[ecu][pid][ts] = []
+                self.sensor_readings[ecu][pid][ts].extend( rec['values'][ecu] )
+                
 
 
-
+    # delete me
     def scan_perm_diag_info(self):
         """ Scan vehicle for status of MIL, PERMANENT emmissions monitors, and PERMANENT DTCs. """
         # 
@@ -1009,7 +1022,7 @@ class OBD2:
                     print ""
         print "--"
 
-
+    # delete me
     def scan_cycle_diag_info(self):
         """ Scan vehicle for status of DRIVE CYCLE emmissions monitors and DTCs. """
         # 

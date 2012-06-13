@@ -175,12 +175,20 @@ def main():
     print ""
     print "Vehicle Basic Info:"
     print "-------------------"
-    pprint.pprint( vehicle.info )
+    #pprint.pprint( vehicle.info )
+    #print ""
+    vehicle.show_basic_info()
     print ""
     print ""
     print "Vehicle OBD2 Status:"
     print "--------------------"
     pprint.pprint( vehicle.obd2status )
+    print ""
+    print "-----------------------------------"
+    print ""
+    print "Vehicle Sensor readings:"
+    print "--------------------"
+    pprint.pprint( vehicle.sensor_readings )
     print ""
     print "-----------------------------------"
     print "END"
