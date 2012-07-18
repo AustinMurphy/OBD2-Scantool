@@ -82,7 +82,7 @@
 1,50,4,"Maximum value for air flow rate from mass air flow sensor",0,2550,g/s,"A*10, B, C, and D are reserved for future use"
 1,51,1,"Fuel Type",,,,"fuel type table lookup"
 1,52,1,"Ethanol fuel %",0,100,%,A*100/255
-1,53,2,"Absoulute Evap system Vapour Pressure",0,327675,kPa,"1/200 per bit"
+1,53,2,"Evap system vapor pressure",0,327675,kPa (Absolute),"((A*256)+B)/200"
 1,54,2,"Evap system vapor pressure",-32767,32768,Pa,"A*256+B - 32768"
 1,55,2,"Short term secondary oxygen sensor trim bank 1",-100,99.22,%,"(A-128)*100/128","Short term secondary oxygen sensor trim bank 3",-100,99.22,%,"(B-128)*100/128"
 1,56,2,"Long term secondary oxygen sensor trim bank 1",-100,99.22,%,"(A-128)*100/128","Long term secondary oxygen sensor trim bank 3",-100,99.22,%,"(B-128)*100/128"

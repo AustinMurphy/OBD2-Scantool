@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 ############################################################################
 #
-# demo-scan.py  
+# scan-to-trace.py  
 #
-# Copyright 2011 Austin Murphy (austin.murphy@gmail.com)
+# Copyright 2011-2012 Austin Murphy (austin.murphy@gmail.com)
 #
 # This file is part of OBD2 Scantool.
 #
@@ -24,13 +24,13 @@
 
 
 #
-#  This is a demo script to show basic usage of obd2.py 
+#  This is a basic scan script to capture readings from all supported PIDs to a trace for later analysis
 #
 
 #
 #  With vehicle ON (Engine can be either OFF or RUNNING)
 #  Attach OBD2 interface to computer and vehicle
-#  Run this demo script
+#  Run this scan script
 #
 
 
@@ -55,8 +55,8 @@ def main():
     
     print "=================================================================="
     print ""
-    print "OBD2 vehicle demo scan"
-    print "----------------------"
+    print "OBD2 vehicle scan to trace"
+    print "--------------------------"
     print ""
     print "Scan date: ", time.ctime()
     
@@ -112,6 +112,7 @@ def main():
     reader = obd2_reader.OBD2reader( TYPE, READER )
     reader.Port = port
     reader.Headers = 1
+    reader.debug = 1
 
     # we want a record of what we pulled
     reader.record_trace()
@@ -124,7 +125,6 @@ def main():
     print "Headers".rjust(16), ": ", str(reader.Headers)
 
     #pprint.pprint( reader.attr )
-    
     for k in sorted(reader.attr.keys()):
         print k.rjust(16), ": ", reader.attr[k]
 
@@ -133,101 +133,51 @@ def main():
     
     
     
-    print ""
-    print "=================================================================="
-    print ""
-    print "OBD2 initialization"
-    print "-------------------"
+    #print ""
+    #print "OBD2 initialization"
+    #print "-------------------"
     
     vehicle = obd2.OBD2( reader )
     
-    print ""
-    print "Loading default PID definitions from CSV file..."
+    #print ""
+    #print "Loading default PID definitions from CSV file..."
     obd2.load_pids_from_csv( 'obd2_std_PIDs.csv' )
-    
-    print ""
-    print "Loading default DTC definitions from CSV file..."
+    #print ""
+    #print "Loading default DTC definitions from CSV file..."
     obd2.load_dtcs_from_csv( 'obd2_std_DTCs.csv' )
 
 
     
     
+    print ""
+    print "=================================================================="
     # debug
     #reader.RTRV_record()
     print ""
     print "Scanning vehicle for supported features..."
     vehicle.scan_features()
     
-    #print ""
-    #print "Supported PIDs - DEBUG"
-    #print "----------------------"
-    #pprint.pprint(vehicle.suppPIDs)
+    print ""
+    print "Supported PIDs - DEBUG"
+    print "----------------------"
+    pprint.pprint(vehicle.suppPIDs)
     
     
     
     print ""
     print "=================================================================="
     print " "
-    print "General vehicle info"
+    print "All PIDs"
     print "--------------------"
-    vehicle.scan_basic_info()
-    vehicle.show_basic_info()
-    print " "
-    # I should fix the inconsistent use of "scan"
-    
-    
-    
+    for spid in vehicle.suppPIDs:
+        pprint.pprint( reader.OBD2_cmd(spid) )
+
+    print ""
     print ""
     print "=================================================================="
-    print " "
-    print "Scan for Diagnostic and Emmissions Monitor info"
-    print "-----------------------------------------------"
-    print " "
-    #print "OBD2 Status BEFORE scan:"
-    #pprint.pprint(vehicle.obd2status)
-    #print " "
-    #print "Scanning for OBD2 status... "
-    vehicle.scan_obd2_status()
-    print " "
-    #print "OBD2 Status AFTER scan:"
-    pprint.pprint(vehicle.obd2status)
-    print " "
     
     
     
-    print ""
-    print "=================================================================="
-    print " "
-    print "Scan for Current Sensor Readings"
-    print "--------------------------------"
-    print " "
-    #vehicle.scan_curr_sensors()
-    sensors = vehicle.curr_sensors()
-    for pid in sensors:
-        vehicle.scan_pid( pid )
-        vehicle.show_last_reading( pid )
-    print " "
-    for pid in sensors:
-        vehicle.scan_pid( pid )
-        vehicle.show_last_reading( pid )
-    print " "
-    print " RAW Data structure:"
-    pprint.pprint( vehicle.sensor_readings )
-    
-
-    print " "
-    print " "
-    print " DTCs:"
-    vehicle.scan_pid( '03' )
-    vehicle.show_last_reading( '03' )
-    
-    
-    
-    print ""
-    print "=================================================================="
-    print "=================================================================="
-
-
 
 
 if __name__ == "__main__":

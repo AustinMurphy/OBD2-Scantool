@@ -72,9 +72,11 @@ GET_CLEARED_DTCs   = "0A"
 
 # Parameters are the same for modes $01 and $02
 supported_PIDs  = ["0100", "0101", "0104", "0105", "010C", "010D", "0111",
-                   "0200", "0202", "0204", "0205", "020C", "020D", "0211",
+                   "0200",
+                   "0500", 
                    "0600", 
                    "0900"]
+#"0200", "0202", "0204", "0205", "020C", "020D", "0211",
 #  FYI  -  0100, 0101, 0104, 0105, 010C, 010D, 0111  are mandatory
 #       when DTC is set, freeze frame must be set with 
 #                0202, 0204, 0205, 020C, 020D, 0211 
@@ -89,6 +91,7 @@ supported_PIDs  = ["0100", "0101", "0104", "0105", "010C", "010D", "0111",
 # modes 01, 02, 05, 06, 08, 09
 # params 00, 20, 40, 60, A0, C0, E0
 #  
+#feature_PIDs    = ["0100", "0113", "011D", "0120", "0140", "0160", "0180", "01A0", "01C0", "01E0",
 feature_PIDs    = ["0100", "0120", "0140", "0160", "0180", "01A0", "01C0", "01E0",
                    "0200", "0220", "0240", "0260", "0280", "02A0", "02C0", "02E0",
                    "0500", "0520", "0540", "0560", "0580", "05A0", "05C0", "05E0",
@@ -521,6 +524,9 @@ def decode_data_by_mode(mode, pid, data):
 
 def decode_feature_pid(PID, data): 
     """ Decode the supported features indicated."""
+    # feature pids indicate which of the next 32 pids are supported
+    # pids 0113 and 011D indicate which of the O2 sensors are supported
+    #  they are useful with mode $05 and maybe mode $06
 
     # a simple list of supported pids to return
     feat_pids = []
@@ -529,16 +535,26 @@ def decode_feature_pid(PID, data):
     # integer math seems to work better
     P0 = int(PID[2:], 16)
 
+    L = len(data)
+    #print "Fpid length:", L
+    bits = L*8
+
     feat_bits = ""
-    for db in data :
-        # reverse the bit order and append
-        feat_bits += hex_to_bitstring(db)[::-1]
+    if L == 4 :
+        for db in data :
+            # reverse the bit order and append
+            feat_bits += hex_to_bitstring(db)[::-1]
+    else:
+        for db in data :
+            # O2 sensor bitmap isn't reversed ?
+            feat_bits += hex_to_bitstring(db)
     
-    for i in range(32):
+    for i in range(bits):
         if feat_bits[i] == '1':
             # do math as integers, then convert back to hex
             P = str.upper(hex(P0+i+1))[2:].rjust(2, "0")
             newpid = M + P
+            #print "M:", M, " P0:", P0, " i:", i, " P:", P, "Newpid:", newpid 
             feat_pids.append(newpid)
 
             # not sure we want/need to do this
@@ -595,6 +611,7 @@ def decode_mode1_pid(PID, data):
         values.append( ["Secondary air status", sacode, secondary_air_statuses[sacode]] )
         return values
 
+    # sort of handled above 
     elif PID == '0113' or PID == '011D':
         [A] = hexbytes_to_bitarrays( data )
         values.append( ["O2 Sensor bitmap", A, "Next 8 PIDs"] )
@@ -641,6 +658,10 @@ def decode_mode9_pid(PID, data):
 
     elif PID == '0908':
         # TODO: split result into C pairs of databytes
+        values.append( [ PIDs[PID][1][0][0], decode_ints( data ), "" ] )
+        return values
+
+    elif PID == '0901' or '0903' or '0905' or '0907' or '0909':
         values.append( [ PIDs[PID][1][0][0], decode_ints( data ), "" ] )
         return values
 
@@ -717,9 +738,12 @@ def decode_monitors( PID, data ) :
     # 0141 looks at the their status only for the current drive cycle
     values = []
     [A, B, C, D] = hexbytes_to_bitarrays( data )
+ 
+    badtxt = "INCOMPLETE"
 
     # PID 0101 has MIL & DTC count, 0141 does not
     if PID == '0101':
+        badtxt = "NOT READY FOR INSPECTION"
         # debug
         #print "Monitor status OVERALL"
         MIL = "Off"
@@ -739,31 +763,31 @@ def decode_monitors( PID, data ) :
     # TODO: these should just skip unsupported sensors, duh.
     #   and doneness should be the 2nd field in the 3 tuple
     for i in [0, 1, 2]:
-        done = "NOT READY FOR INSPECTION"
+        done = badtxt
         if B[i] == '1':
             if B[i+4] == '0':
                 done = "OK"
-            values.append( ['CONTINUOUS MONITOR', continuous_monitors[i], done] )
+            values.append( ['Continuous Monitor', continuous_monitors[i], done] )
 
     # C lists supported monitors (1 = SUPPORTED)
     # D lists their readiness (0 = READY)
     if ign == 0 :
         for i in [0, 1, 2, 3, 4, 5, 6, 7]:
-            done = "NOT READY FOR INSPECTION"
+            done = badtxt
             if C[i] == '1':
                 if D[i] == '0':
                     done = "OK"
                 # debug
-                #print 'MONITOR', non_continuous_monitors[0][i], done
-                values.append( ['NON-CONTINUOUS MONITOR', non_continuous_monitors[0][i], done] )
+                #print 'Monitor', non_continuous_monitors[0][i], done
+                values.append( ['Non-continuous Monitor', non_continuous_monitors[0][i], done] )
 
     if ign == 1 :
         for i in [0, 1, 3, 5, 6, 7]:
-            done = "NOT READY FOR INSPECTION"
+            done = badtxt
             if C[i] == '1':
                 if D[i] == '0':
                     done = "OK"
-                values.append( ['NON-CONTINUOUS MONITOR', non_continuous_monitors[1][i], done] )
+                values.append( ['Non-continuous Monitor', non_continuous_monitors[1][i], done] )
 
 
     # debug
@@ -853,18 +877,8 @@ class OBD2:
         # scans known feature PIDs, adds PIDs reported as supported to self.suppPIDs
         for fpid in feature_PIDs:
             if fpid in self.suppPIDs:
-
                 supp_pids = decode_obd2_record( self.reader.OBD2_cmd(fpid) )
-                for ecu in supp_pids['values'].iterkeys():
-                    if supp_pids['values'][ecu] == []:
-                        self.suppPIDs.remove(fpid)
-                    for pid in supp_pids['values'][ecu]:
-                        if pid not in self.suppPIDs :
-                            self.suppPIDs.append(pid)
-
-        self.suppPIDs.sort()
-        #print "Supported PIDs:"
-        #pprint.pprint(self.suppPIDs)
+                self.store_info( supp_pids )
 
 
     def scan_basic_info(self):
@@ -915,6 +929,23 @@ class OBD2:
         ts = rec['timestamp']
 
         for ecu in rec['values'].iterkeys():
+            if ecu not in self.info:
+                #print "New ECU"
+                self.info[ecu] = {}
+
+            if pid in feature_PIDs:
+                if rec['values'][ecu] == []:
+                    self.suppPIDs.remove(fpid)
+                for pid in rec['values'][ecu]:
+                    if pid not in self.suppPIDs :
+                        self.suppPIDs.append(pid)
+                self.suppPIDs.sort()
+
+            if ecu not in self.obd2status:
+                #print "New ECU"
+                self.obd2status[ecu] = {}
+                self.obd2status[ecu]['inspmons'] = []
+                self.obd2status[ecu]['cyclemons'] = []
 
             if pid in info_PIDs:
                 if 0 in rec['values'][ecu] and len(rec['values'][ecu][0]) == 3:
@@ -930,18 +961,18 @@ class OBD2:
                             self.obd2status[ecu]['MIL'] = v[1]
                         elif v[0] == 'DTC count':
                             self.obd2status[ecu]['DTCcount'] = v[1]
-                        elif v[0] == 'CONTINUOUS MONITOR':
+                        elif v[0] == 'Continuous Monitor':
                             self.obd2status[ecu]['inspmons'].append(v)
-                        elif v[0] == 'NON-CONTINUOUS MONITOR':
+                        elif v[0] == 'Non-continuous Monitor':
                             self.obd2status[ecu]['inspmons'].append(v)
                 # 01 41 - lots of info...
                 elif pid == "0141" :
                     self.obd2status[ecu]['scantime'] = rec['timestamp']
                     vals = rec['values'][ecu]
                     for v in vals:
-                        if v[0] == 'CONTINUOUS MONITOR':
+                        if v[0] == 'Continuous Monitor':
                             self.obd2status[ecu]['cyclemons'].append(v)
-                        elif v[0] == 'NON-CONTINUOUS MONITOR':
+                        elif v[0] == 'Non-continuous Monitor':
                             self.obd2status[ecu]['cyclemons'].append(v)
                 # normalish
                 else :

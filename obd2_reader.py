@@ -60,16 +60,16 @@ class OBD2reader:
         self.Headers      = 0        # ECU headers, 1 is on, 0 is off
         #
         self.attr         = {}       # the list of device attributes and their values
-        self.attr_cmds = {}     # the list of supported attribute at commands, and the associated attribute
+        self.attr_cmds    = {}       # the list of supported attribute at commands, and the associated attribute
         #
         self.RecordTrace  = 0        # 0 = no, 1 = yes record a trace of the serial session
         self.tf_out       = None     # file to record trace to
         #
         if self.Type == "SERIAL":
-            self.Port   = None     # connect later
+            self.Port     = None     # connect later
         elif self.Type == "FILE":
-            self.tf     = None     # open later
-            self.eof    = 0
+            self.tf       = None     # open later
+            self.eof      = 0
         else:
             pass
         #
@@ -129,11 +129,15 @@ class OBD2reader:
                 #try:
                     self.Port.open()
                     self.State = 1
+                    if self.debug > 1:
+                        print "Trying to flush the recv buffer... (5 sec wait, min)"
                     self.flush_recv_buf()
+                    if self.debug > 1:
+                        print "Trying to send reset command..."
                     self.reset()
                     self.rtrv_attr()
                     #if self.attr['ProtoNum'] >= 6:
-                    #    self.Style = 'can'
+                        #self.Style = 'can'
                 #except serial.SerialException as inst:
                 # self.State = 0
                 # raise inst
@@ -299,19 +303,43 @@ class OBD2reader:
             #print "Garbage record.  Skipping."
             return []
 
+        # handle ELM327 errors
+        #  "?" - unrecognized command
+        #  "NO DATA" - reader timed out waiting for response from vehicle
+        #  "BUFFER FULL" - need to read data from reader faster, ie. increase baud rate on serial connection
+        #  many more...
         if len(record) > 1 :
           if record[1][0] == '?' \
           or record[1][0] == 'NO':
             #print "Garbage record.  Skipping."
             return []
 
-  
         # record the changes made by AT commands
         cmd = str.upper(record[0][0])
         if cmd[0:2] == 'AT':
             self.interpret_at_cmd(record)
             return []
  
+        # remove "SEARCHING..." from response
+        # example:
+        #  >0100
+        #  SEARCHING...
+        #  41 00 BE 3E A8 11 
+        if len(record) > 1 :
+            if record[1][0] == 'SEARCHING...':
+                record.pop(1)
+
+        # BUFFER FULL - ugh, need to speed up the serial connection
+        rl = len(record)
+        rec = 0
+        while rec < rl:
+            if record[rec][0] == 'BUFFER' and record[rec][1] == 'FULL':
+                record.pop(rec)
+                print " ERROR - BUFFER FULL - Increase speed of serial connection"
+                #return []
+            rec += 1
+
+
         # format an OBD 2 command for further processing at a higher layer
         try:
             obd2_record = self.format_obd2_record(record)
@@ -355,7 +383,12 @@ class OBD2reader:
 
     
         elif cmd == 'ATZ':
-            self.Headers = 0
+            # this is confusing, 
+            # I was thinking about having vars for "headers" AND "headers wanted" 
+            # the headers var would track the actual headers state, while the headers wanted var 
+            #    would let us remember that we should turn headers back on after a reset
+            # not there yet...
+            #self.Headers = 0
             if self.debug > 0 :
                 print "AT: Reset reader"
     
@@ -472,7 +505,7 @@ class OBD2reader:
                 #   byte count on the first line, then each following line has a line num at the front
                 if len(record) > 2 and len(record[1]) == 1 and len(record[1][0]) == 3:
                     ecuids[ecu]['count'] = int(record[1][0], 16)
-                    print "count:", ecuids[ecu]['count']
+                    #print "count:", ecuids[ecu]['count']
           
                     # strip the line numbers & any padding at the end
                     #pprint.pprint(record[2:])
@@ -508,16 +541,63 @@ class OBD2reader:
     
         # TODO
         elif self.Style == 'old':
-            #print "OLD Style -- ISO/PWM/VPW .."
+            print "OLD Style -- ISO/PWM/VPW .."
       
             if self.Headers == 1:
-                # no trace of this to test
+                print "Headers ON"
+                # trace of this to test is from 2006 acura tsx
+                # singleline and multiline are the same
+                # >0906
+                # 48 6B 09 49 06 01 04 A6 FB 5A 0B 
+                # header:
+                # 48 - priority, 6B - receiver, 09 - sender
                 #pprint.pprint(record)
-                pass
+
+                lines = sorted(record[1:])
+                # TODO - pick out different sender ecus
+  
+                ecu = lines[0][2]
+                print "ECU:", ecu
+                ecuids[ecu] = {}
+                ecuids[ecu]['count'] = 0
+                ecuids[ecu]['data'] = []
+
+                if len(lines) > 1 :
+                    #print " Multiline.. "
+                    # 0: pri, 1: rcvr, 2: sndr, 3: mode, 4: pid, 5: linenum, 6-n: data
+                    # add mode & pid once, skip linenums, concat data
+                    ecuids[ecu]['data'] = lines[0][3:5]
+                    for l in lines:
+                        #print "adding line:", 
+                        #pprint.pprint(l[6:])
+                        ecuids[ecu]['data'].extend(l[6:])
+                    #print "data:",
+                    #pprint.pprint(ecuids[ecu]['data'])
+                elif len(lines) == 1 :
+                    print " Singleline.. "
+                    # 0: pri, 1: rcvr, 2: sndr, 3: mode, 4: pid, 5: bytecount, 6-n: data
+                    # singleline
+                    ecuids[ecu]['count'] = lines[0][5]
+                    ecuids[ecu]['data'].extend(lines[0][3:5])
+                    ecuids[ecu]['data'].extend(lines[0][6:])
+                else:
+                    # ERROR !
+                    #print "ERROR, data record too short:"
+                    #pprint.pprint(record)
+                    raise self.ErrorIncompleteRecord("ERROR - Incomplete Response Record")
+
+                while ecuids[ecu]['data'][0] == '00' :
+                    ecuids[ecu]['data'].pop(0)
       
+
+
             elif self.Headers == 0:
+                print "Headers OFF"
                 #print "cmd:", cmd
                 #pprint.pprint(record)
+    
+                # singleline vs multiline (with line #'s)
+                lines = sorted(record[1:])
     
                 # Since there are no headers, we will assume everything was from '7E8'
                 ecu = '7E8'
@@ -525,9 +605,6 @@ class OBD2reader:
                 ecuids[ecu]['count'] = 0
                 ecuids[ecu]['data'] = []
                
-                # singleline vs multiline (with line #'s)
-                lines = sorted(record[1:])
-    
                 #print "DEBUG ---- LINES:"
                 #pprint.pprint(lines)
     
@@ -599,7 +676,11 @@ class OBD2reader:
     # fixme - consider SERIAL vs. FILE
     def flush_recv_buf(self):
         """Internal use only: not a public interface"""
-        time.sleep(0.2)
+        # after connecting, wait 5 secs for something to appear in the buffer
+        # if there is nothing, move on
+        # if there is something, read and discard it
+        #time.sleep(0.2)
+        time.sleep(5)
         while self.Port.inWaiting() > 0:
             tmp = self.Port.read(1)
             time.sleep(0.1)
@@ -679,7 +760,7 @@ class OBD2reader:
                     # 
                     # we are done once we see the prompt
                     if c == '>':
-                        if self.debug > 1 :
+                        if self.debug > 2 :
                             print "Raw Record: ",
                             pprint.pprint(raw_record)
                         return raw_record
@@ -734,14 +815,14 @@ class OBD2reader:
                 #
                 if len(c) != 1:
                     self.eof = 1
-                    if self.debug > 1 :
-                        print "Raw Record: ",
+                    if self.debug > 2 :
+                        print "FILE Raw Record: ",
                         pprint.pprint(raw_record)
                     return raw_record
                 elif c == '>':
                     eor = 1
-                    if self.debug > 1 :
-                        print "Raw Record: ",
+                    if self.debug > 2 :
+                        print "FILE2 Raw Record: ",
                         pprint.pprint(raw_record)
                     return raw_record
                 # \r = CR , \n = LF 

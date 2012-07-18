@@ -45,6 +45,7 @@ import pprint
 
 # headers on(1)/off(0)
 headers = 0
+#headers = 1
 #style = can/old
 #style = 'old'
 style = 'can'
@@ -52,7 +53,7 @@ style = 'can'
 # 0=off, 
 # 1+ - show raw & decoded records
 # 2+ - show record as triaged
-debug = 0
+debug = 2
 
 
 
@@ -102,10 +103,12 @@ def main():
     reader.open_trace(tracefile)
 
     # manually set since we can't query the tracefile
-    reader.Style   = 'can'
-    reader.Headers = 1
+    #reader.Style   = 'can'
+    #reader.Headers = 1
     #reader.Style   = 'old'
     #reader.Headers = 0
+    reader.Style   = style
+    reader.Headers = headers
 
 
     vehicle = obd2.OBD2( reader )
@@ -138,6 +141,9 @@ def main():
                 print "--"
                 print "Decoded Record: ",
                 pprint.pprint( dec_rec )
+                print " "
+                print "=================================="
+                print " "
 
             # do something with the decoded obd2_record
             vehicle.store_info( dec_rec )
@@ -175,14 +181,20 @@ def main():
     print ""
     print "Vehicle Basic Info:"
     print "-------------------"
-    #pprint.pprint( vehicle.info )
-    #print ""
+    pprint.pprint( vehicle.info )
+    print ""
     vehicle.show_basic_info()
     print ""
     print ""
     print "Vehicle OBD2 Status:"
     print "--------------------"
     pprint.pprint( vehicle.obd2status )
+    print ""
+    print "-----------------------------------"
+    print ""
+    print "Vehicle supported PIDs:"
+    print "-----------------------"
+    pprint.pprint( vehicle.suppPIDs )
     print ""
     print "-----------------------------------"
     print ""
