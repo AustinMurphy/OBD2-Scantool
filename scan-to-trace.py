@@ -79,9 +79,9 @@ def main():
      'xonxoff' : False,
      'rtscts'  : False,
      'dsrdtr'  : False,
-     'timeout' : None,
-     'interCharTimeout': None,
+     'timeout' : 2,
      'writeTimeout'    : None
+     'interCharTimeout': None,
     }
     
     # create serial port (closed)
@@ -112,7 +112,7 @@ def main():
     reader = obd2_reader.OBD2reader( TYPE, READER )
     reader.Port = port
     reader.Headers = 1
-    reader.debug = 1
+    reader.debug = 2
 
     # we want a record of what we pulled
     reader.record_trace()

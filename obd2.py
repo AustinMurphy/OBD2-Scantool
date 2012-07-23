@@ -325,7 +325,9 @@ def decode_text( data ) :
     TXT = ''
     for d in data:
          # check that result is actually ascii
-         if d >= '20' and d <= '7E':
+         #if d >= '20' and d <= '7E':
+         hd = eval( "0x" + d )
+         if hd >= 0x20 and hd <= 0x7E :
              TXT += binascii.unhexlify(d)
          else:
              TXT += '_'
@@ -465,16 +467,16 @@ def decode_data_by_mode(mode, pid, data):
     PID = M + P
     #print "PiID: -", PID, "-"
 
-    # feature PIDs are the same for all modes
-    if PID in feature_PIDs:
-        return decode_feature_pid(PID, D)
+    ## feature PIDs are the same for all modes
+    ## no, mode9 has a message count
+    #if PID in feature_PIDs:
+    #    return decode_feature_pid(PID, D)
 
     if M == '01' :
         return decode_mode1_pid(PID, D)
-        #PID = '01' + str.upper(P).rjust(2,'0')
 
     elif M == '02' :
-        # mode 2 uses the same definitions as mode 1 (I hope...)
+        # mode 2 uses the same definitions as mode 1 
         if P == '02' :
             return decode_DTCs(data)
         else :
@@ -485,24 +487,14 @@ def decode_data_by_mode(mode, pid, data):
         return decode_DTCs(data)
 
     elif M == '04' :
-        # when mode 04 is sent, the DTCs are cleared.  There is no response. 
+        # when mode 04 is sent, the DTCs are cleared.  There is no response, except "44" or and error. 
         pass
 
     elif M == '05' :
-        #PID = '05' + str.upper(P).rjust(4,'0')
-        pass
+        return decode_mode5_pid(PID, data)
 
     elif M == '06' :
-        PID = '06' + str.upper(P).rjust(2,'0')
-        print " DONT KNOW how to interpret mode 06"
-        print "  PID:", PID
-        # same as hex
-        #print "  Raw:", data
-        print "  Hex:", decode_hex(data)
-        print " Ints:", decode_ints(data)
-        # text needs to be filtered
-        #print " Text:", decode_text(data)
-        return []
+        return decode_mode6_pid(PID, data)
 
     elif M == '07' :
         return decode_DTCs(data)
@@ -511,7 +503,6 @@ def decode_data_by_mode(mode, pid, data):
         pass
 
     elif M == '09' :
-        #PID = '09' + str.upper(P).rjust(2,'0')
         return decode_mode9_pid(PID, D)
 
     elif M == '0A' :
@@ -578,6 +569,9 @@ def decode_mode1_pid(PID, data):
         values.append( ["Unknown PID: " + PID, decode_hex(data), ""] )
         return []
 
+    elif PID in feature_PIDs:
+        return decode_feature_pid(PID, data)
+
     elif PID == '0101' or PID == '0141':
         return decode_monitors(PID, data)
 
@@ -619,7 +613,11 @@ def decode_mode1_pid(PID, data):
 
     elif PID == '011C':
         A = data[0]
-        values.append( ["OBD standard", A, OBD_standards[A]] )
+        print "DEBUG: byte A:", A
+        if A in OBD_standards :
+            values.append( ["OBD standard", A, OBD_standards[A]] )
+        else :
+            values.append( ["OBD standard", A, "Unknown"] )
         return values
 
     elif PID == '0151':
@@ -633,8 +631,9 @@ def decode_mode1_pid(PID, data):
         return decode_generic_pid(PID, data)
 
 
-def decode_mode9_pid(PID, data):
-    """ Decode Mode9 sensor reading using PIDs dict . """
+def decode_mode5_pid(PID, data):
+    """ Decode Mode5 . """
+    # NOTE: this is only for OLD style (not CAN)
 
     values = []
 
@@ -643,32 +642,151 @@ def decode_mode9_pid(PID, data):
         values.append( ["Unknown PID: " + PID, decode_hex(data), ""] )
         return []
 
-    elif PID == '0902' or PID == '0904' or PID == '090A':
-        # first databyte might be a count or something, 
-        #   should probably be handled per PID, 
-        #   ie. 0904 should have 16 bytes, 0902 -> 17, etc. 
-        if data[0] == '01' :
+    elif PID in feature_PIDs:
+        return decode_feature_pid(PID, data)
+
+    else :
+        print " DONT KNOW how to interpret mode 05"
+        print "  PID:", PID
+        # same as hex
+        #print "  Raw:", data
+        print "  Hex:", decode_hex(data)
+        print " Ints:", decode_ints(data)
+        # text needs to be filtered
+        #print " Text:", decode_text(data)
+        return []
+
+
+def decode_mode6_pid(PID, data):
+    """ Decode Mode6 . """
+
+    values = []
+
+    # pids/tids/mids are not necessarily in the CSV file
+    #if PID not in PIDs :
+    #    print "Unknown PID, data: ", PID, data
+    #    values.append( ["Unknown PID: " + PID, decode_hex(data), ""] )
+    #    return []
+    #
+    #elif PID in feature_PIDs:
+    if PID in feature_PIDs:
+        #return []
+        if len(data) == 5 :
+            # pop filler byte on old style messages
+            data.pop(0)
+        print "feat PID, data: ", PID, data
+        return decode_feature_pid(PID, data)
+
+    else :
+        #PID = '06' + str.upper(P).rjust(2,'0')
+        print " DONT KNOW how to interpret mode 06"
+        print "  PID:", PID
+        # same as hex
+        #print "  Raw:", data
+        print "  Hex:", decode_hex(data)
+        print " Ints:", decode_ints(data)
+        # text needs to be filtered
+        #print " Text:", decode_text(data)
+        return []
+
+
+def decode_mode9_pid(PID, data):
+    """ Decode Mode9 sensor reading using PIDs dict . """
+
+    values = []
+
+    print "mode9 PID, data: ", PID, data
+
+    if PID not in PIDs :
+        #print "Unknown PID, data: ", PID, data
+        values.append( ["Unknown PID: " + PID, decode_hex(data), ""] )
+        return []
+
+    elif PID in feature_PIDs:
+        if len(data) == 5:
+            # pop message count
+            data.pop(0)
+        return decode_feature_pid(PID, data)
+
+    # message counts for next pids
+    elif PID == '0901' or PID == '0903' or PID == '0905' or PID == '0907' or PID == '0909':
+        values.append( [ PIDs[PID][1][0][0], decode_ints( data ), "" ] )
+        return values
+
+    # VIN
+    elif PID == '0902':
+        #   0902 should have 17 bytes
+        #    VIN: XXXXXXXXXXXXXXXXX
+        if len(data) == 18:
+            # pop message count
+            data.pop(0)
+        # old style pads '0902' with 3 '00' bytes at front
+        if data[0] == '00' and data[1] == '00' and data[2] == '00':
+            data.pop(0)
+            data.pop(0)
+            data.pop(0)
+        values.append( [ PIDs[PID][1][0][0], decode_text( data ), "" ] )
+        return values
+
+    # Calibration ID
+    elif PID == '0904':
+        #  0904 should have 16 bytes
+        #  CALID: XXXXXXXXXXXXXXXX
+        if len(data) == 17 or len(data) == 33:
+            # pop message count
             data.pop(0)
         values.append( [ PIDs[PID][1][0][0], decode_text( data ), "" ] )
         return values
 
     elif PID == '0906':
+        # 4 hex bytes
+        #  CVN: XX XX XX XX
+        if len(data) == 5:
+            # pop message count
+            data.pop(0)
         values.append( [ PIDs[PID][1][0][0], decode_hex( data ), "" ] )
         return values
 
     elif PID == '0908':
-        # TODO: split result into C pairs of databytes
-        values.append( [ PIDs[PID][1][0][0], decode_ints( data ), "" ] )
-        return values
+        # IPT: 16 values, each is a 2byte integer
+        #print "IPT decode...."
 
-    elif PID == '0901' or '0903' or '0905' or '0907' or '0909':
-        values.append( [ PIDs[PID][1][0][0], decode_ints( data ), "" ] )
+        if len(data) == 33:
+            # pop message count
+            data.pop(0)
+
+        ipt_names = [
+        "OBDCOND",
+        "IGNCNTR",
+        "CATCOMP1",
+        "CATCOND1",
+        "CATCOMP2",
+        "CATCOND2",
+        "O2SCOMP1",
+        "O2SCOND1",
+        "O2SCOMP2",
+        "O2SCOND2",
+        "EGRCOMP",
+        "EGRCOND",
+        "AIRCOMP",
+        "AIRCOND",
+        "EVAPCOMP",
+        "EVAPCOND",
+        ]
+
+        while len(data) > 0:
+            A = 256 * int( data.pop(0), 16 )
+            B = int( data.pop(0), 16 )
+            #print "A+B", A, B, A+B
+            values.append( [ "IPT: " + ipt_names.pop(0), A+B , "" ] )
+
         return values
 
     # insert new elif sections here
+    # 090A ...
 
     else:
-        return decode_generic_pid(PID, data)
+        return []
 
 
 def decode_generic_pid(PID, data):
@@ -934,11 +1052,11 @@ class OBD2:
                 self.info[ecu] = {}
 
             if pid in feature_PIDs:
-                if rec['values'][ecu] == []:
-                    self.suppPIDs.remove(fpid)
-                for pid in rec['values'][ecu]:
-                    if pid not in self.suppPIDs :
-                        self.suppPIDs.append(pid)
+                #if rec['values'][ecu] == []:
+                #    self.suppPIDs.remove(pid)
+                for fpid in rec['values'][ecu]:
+                    if fpid not in self.suppPIDs :
+                        self.suppPIDs.append(fpid)
                 self.suppPIDs.sort()
 
             if ecu not in self.obd2status:
