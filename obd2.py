@@ -254,10 +254,10 @@ def load_dtcs_from_csv(dtcsfile):
     #
     #  DTC,"Description"
     #
-    with open(dtcsfile, 'rb') as f:
+    with open(dtcsfile, 'rt') as f:
         reader = csv.reader(f)
         # skip the field description line
-        flddesc = reader.next()
+        flddesc = next(reader)
         for row in reader:
             DTCs[row[0]] = row[1]
 
@@ -269,10 +269,10 @@ def load_pids_from_csv(pidsfile):
     #
     #  "Mode (hex)","PID (hex)","Data bytes returned",Desc,Min,Max,Units,Formula[,Desc,Min,Max,Units,Formula]*
     #
-    with open(pidsfile, 'rb') as f:
+    with open(pidsfile, 'rt') as f:
         reader = csv.reader(f)
         # skip the field description line
-        flddesc = reader.next()
+        flddesc = next(reader)
 
         for row in reader:
             num_vals = len(row)
@@ -390,7 +390,7 @@ def decode_obd2_record(obd2_record):
     #  or an empty list if there is nothing to decode
     #values = []
 
-    for ECU in obd2_record['responses'].iterkeys():
+    for ECU in obd2_record['responses'].keys():
 
         DATABYTES = obd2_record['responses'][ECU]
         if len(DATABYTES) < 1 :
@@ -613,7 +613,7 @@ def decode_mode1_pid(PID, data):
 
     elif PID == '011C':
         A = data[0]
-        print "DEBUG: byte A:", A
+        print("DEBUG: byte A:", A)
         if A in OBD_standards :
             values.append( ["OBD standard", A, OBD_standards[A]] )
         else :
@@ -646,12 +646,12 @@ def decode_mode5_pid(PID, data):
         return decode_feature_pid(PID, data)
 
     else :
-        print " DONT KNOW how to interpret mode 05"
-        print "  PID:", PID
+        print(" DONT KNOW how to interpret mode 05")
+        print("  PID:", PID)
         # same as hex
         #print "  Raw:", data
-        print "  Hex:", decode_hex(data)
-        print " Ints:", decode_ints(data)
+        print("  Hex:", decode_hex(data))
+        print(" Ints:", decode_ints(data))
         # text needs to be filtered
         #print " Text:", decode_text(data)
         return []
@@ -674,17 +674,17 @@ def decode_mode6_pid(PID, data):
         if len(data) == 5 :
             # pop filler byte on old style messages
             data.pop(0)
-        print "feat PID, data: ", PID, data
+        print("feat PID, data: ", PID, data)
         return decode_feature_pid(PID, data)
 
     else :
         #PID = '06' + str.upper(P).rjust(2,'0')
-        print " DONT KNOW how to interpret mode 06"
-        print "  PID:", PID
+        print(" DONT KNOW how to interpret mode 06")
+        print("  PID:", PID)
         # same as hex
         #print "  Raw:", data
-        print "  Hex:", decode_hex(data)
-        print " Ints:", decode_ints(data)
+        print("  Hex:", decode_hex(data))
+        print(" Ints:", decode_ints(data))
         # text needs to be filtered
         #print " Text:", decode_text(data)
         return []
@@ -695,7 +695,7 @@ def decode_mode9_pid(PID, data):
 
     values = []
 
-    print "mode9 PID, data: ", PID, data
+    print("mode9 PID, data: ", PID, data)
 
     if PID not in PIDs :
         #print "Unknown PID, data: ", PID, data
@@ -1046,7 +1046,7 @@ class OBD2:
         pid = rec['command']
         ts = rec['timestamp']
 
-        for ecu in rec['values'].iterkeys():
+        for ecu in rec['values'].keys():
             if ecu not in self.info:
                 #print "New ECU"
                 self.info[ecu] = {}
@@ -1177,17 +1177,17 @@ class OBD2:
 
         for ecu in self.sensor_readings :
             mts = max( self.sensor_readings[ecu][pid] ) 
-            print ecu, "-", pid, "-", mts, ":",
+            print(ecu, "-", pid, "-", mts, ":", end=' ')
             vals = 0
             if len(self.sensor_readings[ecu][pid][mts]) == 0:
-                print ""
+                print("")
             for val in self.sensor_readings[ecu][pid][mts] :
                 if vals > 0:
-                    print "                        ",
+                    print("                        ", end=' ')
                 vals += 1
                 if len(val) == 3:
                     # debug / log
-                    print val[0].rjust( c1 ), ": ", str(val[1]).rjust( c2 ), val[2]
+                    print(val[0].rjust( c1 ), ": ", str(val[1]).rjust( c2 ), val[2])
     
 
     # # simulator does not have freeze frame sensors
@@ -1211,13 +1211,13 @@ class OBD2:
     def show_basic_info(self):
         """ Show general information. """
         # just interprets self.info for CLI, GUI would directly read self.info
-        print "VIN".rjust(16),           ": ", self.info['7E8']['VIN']
-        print "Year".rjust(16),          ": ", self.info['7E8']['Year']
-        print "Manufacturer".rjust(16),  ": ", self.info['7E8']['Make']
-        print "Model".rjust(16),         ": ", self.info['7E8']['Model']
-        print "Complies with".rjust(16), ": ", OBD_standards[self.info['7E8']['OBD_std']]
-        print "Fuel type".rjust(16),     ": ", fuel_types[self.info['7E8']['fuel_type']]
-        print "Calibration".rjust(16),   ": ", self.info['7E8']['Calibration']
+        print("VIN".rjust(16),           ": ", self.info['7E8']['VIN'])
+        print("Year".rjust(16),          ": ", self.info['7E8']['Year'])
+        print("Manufacturer".rjust(16),  ": ", self.info['7E8']['Make'])
+        print("Model".rjust(16),         ": ", self.info['7E8']['Model'])
+        print("Complies with".rjust(16), ": ", OBD_standards[self.info['7E8']['OBD_std']])
+        print("Fuel type".rjust(16),     ": ", fuel_types[self.info['7E8']['fuel_type']])
+        print("Calibration".rjust(16),   ": ", self.info['7E8']['Calibration'])
 
 
     def show_obd2_status(self):

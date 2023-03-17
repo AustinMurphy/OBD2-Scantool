@@ -69,23 +69,23 @@ def main():
     tracefile = sys.argv[1]
     
     
-    print "=================================================================="
-    print ""
-    print "OBD2 trace decode"
-    print "----------------------"
-    print ""
-    print "Date: ", time.ctime()
-    print ""
-    print "Trace: ", tracefile
+    print("==================================================================")
+    print("")
+    print("OBD2 trace decode")
+    print("----------------------")
+    print("")
+    print("Date: ", time.ctime())
+    print("")
+    print("Trace: ", tracefile)
     
     
-    print ""
-    print "Loading default PID definitions from CSV file..."
+    print("")
+    print("Loading default PID definitions from CSV file...")
     obd2.load_pids_from_csv( 'obd2_std_PIDs.csv' )
     # Global: obd2.PIDs[]
     
-    print ""
-    print "Loading default DTC definitions from CSV file..."
+    print("")
+    print("Loading default DTC definitions from CSV file...")
     obd2.load_dtcs_from_csv( 'obd2_std_DTCs.csv' )
     # Global: obd2.DTCs[]
     
@@ -114,15 +114,15 @@ def main():
     vehicle = obd2.OBD2( reader )
 
 
-    print ""
-    print "Reading from tracefile..."
-    print ""
+    print("")
+    print("Reading from tracefile...")
+    print("")
 
     while 1:
         record = reader.RTRV_record()
         if debug > 0:
-            print "-----------------------------------"
-            print "Raw Record: ",
+            print("-----------------------------------")
+            print("Raw Record: ", end=' ')
             pprint.pprint(record)
 
         obd2_record = reader.triage_record( record )
@@ -131,19 +131,19 @@ def main():
             pass
         else:
             if debug > 1:
-                print "--"
-                print "Triaged Record: ",
+                print("--")
+                print("Triaged Record: ", end=' ')
                 pprint.pprint(obd2_record)
-                print "--"
+                print("--")
 
             dec_rec =  obd2.decode_obd2_record( obd2_record )
             if debug > 0 :
-                print "--"
-                print "Decoded Record: ",
+                print("--")
+                print("Decoded Record: ", end=' ')
                 pprint.pprint( dec_rec )
-                print " "
-                print "=================================="
-                print " "
+                print(" ")
+                print("==================================")
+                print(" ")
 
             # do something with the decoded obd2_record
             vehicle.store_info( dec_rec )
@@ -152,58 +152,58 @@ def main():
             break
 
 
-    print "-----------------------------------"
-    print ""
-    print ""
-    print "Reader Attributes:"
-    print "------------------"
+    print("-----------------------------------")
+    print("")
+    print("")
+    print("Reader Attributes:")
+    print("------------------")
     pprint.pprint( reader.attr )
-    print ""
+    print("")
 
     #
-    print "Reader State:"
-    print "-------------"
-    print "      Type:", reader.Type         
-    print "    Device:", reader.Device       
-    print "     debug:", reader.debug        
-    print "     State:", reader.State        
+    print("Reader State:")
+    print("-------------")
+    print("      Type:", reader.Type)         
+    print("    Device:", reader.Device)       
+    print("     debug:", reader.debug)        
+    print("     State:", reader.State)        
     #print "recwaiting", reader.recwaiting   
-    print "     Style:", reader.Style        
-    print "   Headers:", reader.Headers      
+    print("     Style:", reader.Style)        
+    print("   Headers:", reader.Headers)      
     #reader.attr         
     #print reader.attr_cmds 
-    print "    Trace?:", reader.RecordTrace  
-    print "Trace file:", reader.tf_out
+    print("    Trace?:", reader.RecordTrace)  
+    print("Trace file:", reader.tf_out)
     #
 
 
 
-    print ""
-    print "Vehicle Basic Info:"
-    print "-------------------"
+    print("")
+    print("Vehicle Basic Info:")
+    print("-------------------")
     pprint.pprint( vehicle.info )
-    print ""
+    print("")
     vehicle.show_basic_info()
-    print ""
-    print ""
-    print "Vehicle OBD2 Status:"
-    print "--------------------"
+    print("")
+    print("")
+    print("Vehicle OBD2 Status:")
+    print("--------------------")
     pprint.pprint( vehicle.obd2status )
-    print ""
-    print "-----------------------------------"
-    print ""
-    print "Vehicle supported PIDs:"
-    print "-----------------------"
+    print("")
+    print("-----------------------------------")
+    print("")
+    print("Vehicle supported PIDs:")
+    print("-----------------------")
     pprint.pprint( vehicle.suppPIDs )
-    print ""
-    print "-----------------------------------"
-    print ""
-    print "Vehicle Sensor readings:"
-    print "--------------------"
+    print("")
+    print("-----------------------------------")
+    print("")
+    print("Vehicle Sensor readings:")
+    print("--------------------")
     pprint.pprint( vehicle.sensor_readings )
-    print ""
-    print "-----------------------------------"
-    print "END"
+    print("")
+    print("-----------------------------------")
+    print("END")
 
 
 
