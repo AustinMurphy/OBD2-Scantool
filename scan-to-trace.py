@@ -53,20 +53,20 @@ import pprint
 def main():
     
     
-    print "=================================================================="
-    print ""
-    print "OBD2 vehicle scan to trace"
-    print "--------------------------"
-    print ""
-    print "Scan date: ", time.ctime()
+    print("==================================================================")
+    print("")
+    print("OBD2 vehicle scan to trace")
+    print("--------------------------")
+    print("")
+    print("Scan date: ", time.ctime())
     
     
     
-    print ""
-    print "=================================================================="
-    print ""
-    print "Serial port attributes"
-    print "----------------------"
+    print("")
+    print("==================================================================")
+    print("")
+    print("Serial port attributes")
+    print("----------------------")
     
     #ser_device = '/dev/pts/7'
     ser_device = '/dev/ttyUSB0'
@@ -80,7 +80,7 @@ def main():
      'rtscts'  : False,
      'dsrdtr'  : False,
      'timeout' : 2,
-     'writeTimeout'    : None
+     'writeTimeout'    : None,
      'interCharTimeout': None,
     }
     
@@ -89,21 +89,21 @@ def main():
     port.port = ser_device
     port.applySettingsDict(ser_settings)
     
-    print "Device".rjust(16), ": ",  port.name
+    print("Device".rjust(16), ": ",  port.name)
     #pprint.pprint( port.getSettingsDict() )
     #print ""
     
     settings = port.getSettingsDict()
     for k in sorted(settings.keys()):
-        print k.rjust(16), ": ", settings[k]
+        print(k.rjust(16), ": ", settings[k])
     
     
     
-    print ""
-    print "=================================================================="
-    print ""
-    print "OBD2 reader device"
-    print "------------------"
+    print("")
+    print("==================================================================")
+    print("")
+    print("OBD2 reader device")
+    print("------------------")
     
     TYPE   = 'SERIAL'
     READER = 'ELM327'
@@ -119,14 +119,14 @@ def main():
 
     reader.connect()   # this also opens the serial port
     
-    print "Device".rjust(16), ": ", str(reader.Device)
-    print "State".rjust(16), ": ", str(reader.State)
-    print "Style".rjust(16), ": ", str(reader.Style)
-    print "Headers".rjust(16), ": ", str(reader.Headers)
+    print("Device".rjust(16), ": ", str(reader.Device))
+    print("State".rjust(16), ": ", str(reader.State))
+    print("Style".rjust(16), ": ", str(reader.Style))
+    print("Headers".rjust(16), ": ", str(reader.Headers))
 
     #pprint.pprint( reader.attr )
     for k in sorted(reader.attr.keys()):
-        print k.rjust(16), ": ", reader.attr[k]
+        print(k.rjust(16), ": ", reader.attr[k])
 
     # TODO
     #   notice that ELM327 is not connected and throw exception
@@ -149,32 +149,32 @@ def main():
 
     
     
-    print ""
-    print "=================================================================="
+    print("")
+    print("==================================================================")
     # debug
     #reader.RTRV_record()
-    print ""
-    print "Scanning vehicle for supported features..."
+    print("")
+    print("Scanning vehicle for supported features...")
     vehicle.scan_features()
     
-    print ""
-    print "Supported PIDs - DEBUG"
-    print "----------------------"
+    print("")
+    print("Supported PIDs - DEBUG")
+    print("----------------------")
     pprint.pprint(vehicle.suppPIDs)
     
     
     
-    print ""
-    print "=================================================================="
-    print " "
-    print "All PIDs"
-    print "--------------------"
+    print("")
+    print("==================================================================")
+    print(" ")
+    print("All PIDs")
+    print("--------------------")
     for spid in vehicle.suppPIDs:
         pprint.pprint( reader.OBD2_cmd(spid) )
 
-    print ""
-    print ""
-    print "=================================================================="
+    print("")
+    print("")
+    print("==================================================================")
     
     
     
